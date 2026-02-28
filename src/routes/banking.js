@@ -92,4 +92,69 @@ router.get('/reconciliation/report', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /banking/api-config
+router.get('/api-config', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const configs = await db('config').whereIn('key', [
+      'bank_api_provider', 'bank_api_url', 'bank_api_key', 'bank_api_enabled',
+    ]);
+    const data = {};
+    configs.forEach((c) => { data[c.key] = c.value; });
+    // Mask API key for display
+    if (data.bank_api_key) {
+      data.bank_api_key_masked = data.bank_api_key.slice(0, 6) + '****' + data.bank_api_key.slice(-4);
+      delete data.bank_api_key;
+    }
+    data.is_configured = !!(data.bank_api_provider && data.bank_api_url);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// PUT /banking/api-config
+router.put('/api-config', authenticate, authorize('admin'), async (req, res, next) => {
+  try {
+    const { bank_api_provider, bank_api_url, bank_api_key, bank_api_enabled } = req.body;
+    const allowedKeys = { bank_api_provider, bank_api_url, bank_api_key, bank_api_enabled: String(bank_api_enabled ?? 'false') };
+
+    for (const [key, value] of Object.entries(allowedKeys)) {
+      if (value === undefined) continue;
+      const existing = await db('config').where({ key }).first();
+      if (existing) {
+        await db('config').where({ key }).update({ value: String(value), updated_at: new Date() });
+      } else {
+        await db('config').insert({ key, value: String(value), description: `Configuración API bancaria: ${key}` });
+      }
+    }
+
+    await auditService.logAction(req.user.id, 'config', null, 'update', null, { bank_api_provider }, req.ip);
+    res.json({ success: true, message: 'Configuración de API bancaria actualizada' });
+  } catch (err) { next(err); }
+});
+
+// POST /banking/sync - Fetch movements from bank API
+router.post('/sync', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
+  try {
+    const enabled = await db('config').where({ key: 'bank_api_enabled' }).first();
+    if (enabled?.value !== 'true') {
+      throw new AppError('La API bancaria no está habilitada. Configure la conexión en Configuración > API Bancaria.', 400, 'BANK_API_NOT_CONFIGURED');
+    }
+
+    const provider = (await db('config').where({ key: 'bank_api_provider' }).first())?.value;
+    const apiUrl = (await db('config').where({ key: 'bank_api_url' }).first())?.value;
+    const apiKey = (await db('config').where({ key: 'bank_api_key' }).first())?.value;
+
+    if (!provider || !apiUrl || !apiKey) {
+      throw new AppError('Configuración de API bancaria incompleta. Verifique proveedor, URL y clave API.', 400, 'BANK_API_INCOMPLETE');
+    }
+
+    // Placeholder: when the bank provides the real API, implement the fetch here.
+    // For now, return a clear message indicating the integration point.
+    throw new AppError(
+      `Integración con ${provider} pendiente. La conexión a ${apiUrl} está configurada pero el adaptador de ${provider} aún no está implementado. Contacte al desarrollador para activar la integración.`,
+      501,
+      'BANK_API_NOT_IMPLEMENTED'
+    );
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

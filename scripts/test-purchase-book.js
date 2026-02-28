@@ -136,6 +136,7 @@ async function main() {
     emission_date: today,
     reception_date: today,
     exchange_rate: exchangeRate,
+    exchange_rate_date: today,
     fiscal_period: period,
     expense_category_id: catId,
     cost_center_id: ccId,
