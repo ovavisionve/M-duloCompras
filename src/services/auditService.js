@@ -29,7 +29,7 @@ async function getAuditLogs(filters = {}) {
   const limit = filters.limit || 50;
   const offset = (page - 1) * limit;
 
-  const [{ count }] = await query.clone().count();
+  const [{ count }] = await query.clone().clearSelect().clearOrder().count();
   const data = await query.limit(limit).offset(offset);
 
   return { data, total: parseInt(count), page, limit };
