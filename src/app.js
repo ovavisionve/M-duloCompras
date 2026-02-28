@@ -45,6 +45,16 @@ app.use('/api/v1/dashboard', require('./routes/dashboard'));
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// Serve frontend in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '../frontend/dist');
+  app.use(express.static(frontendPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads')) return next();
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+}
+
 // Error handling
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
