@@ -20,4 +20,27 @@ api.interceptors.response.use(
   }
 );
 
+export function downloadFile(url, filename) {
+  const token = localStorage.getItem('token');
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then((res) => {
+      if (!res.ok) throw new Error('Error al descargar');
+      const disposition = res.headers.get('Content-Disposition');
+      if (!filename && disposition) {
+        const match = disposition.match(/filename=(.+)/);
+        if (match) filename = match[1].replace(/"/g, '');
+      }
+      return res.blob();
+    })
+    .then((blob) => {
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename || 'descarga';
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    })
+    .catch((err) => alert(err.message));
+}
+
 export default api;

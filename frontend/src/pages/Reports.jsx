@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Download, FileText, Filter, RefreshCw, Search, Users } from 'lucide-react';
-import api from '../api';
+import api, { downloadFile } from '../api';
 
 const PIE_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#0ea5e9', '#f97316', '#14b8a6', '#ec4899', '#6366f1'];
 
@@ -9,24 +9,6 @@ const fmtVES = (v) => `Bs. ${Number(v || 0).toLocaleString('es-VE', { minimumFra
 const fmtUSD = (v) => `$ ${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-VE') : '-';
 const mono = { fontFamily: 'monospace', fontSize: '0.85rem' };
-
-function downloadFile(url) {
-  const token = localStorage.getItem('token');
-  const a = document.createElement('a');
-  // Use fetch with auth header to download
-  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => res.blob())
-    .then((blob) => {
-      const blobUrl = URL.createObjectURL(blob);
-      a.href = blobUrl;
-      // Extract filename from URL
-      const parts = url.split('/');
-      const format = parts[parts.length - 1].split('?')[0];
-      a.download = `reporte_${format}`;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-    });
-}
 
 function ExportButtons({ baseUrl, params, label }) {
   const qs = new URLSearchParams(params).toString();

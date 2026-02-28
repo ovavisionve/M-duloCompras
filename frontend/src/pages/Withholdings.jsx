@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Download, FileText } from 'lucide-react';
-import api from '../api';
+import api, { downloadFile } from '../api';
 
 export default function Withholdings() {
   const [withholdings, setWithholdings] = useState([]);
@@ -17,8 +17,8 @@ export default function Withholdings() {
 
   useEffect(() => { load(); }, [filters]);
 
-  const downloadPdf = (id) => {
-    window.open(`/api/v1/withholdings/${id}/pdf`, '_blank');
+  const downloadPdf = (id, voucher) => {
+    downloadFile(`/api/v1/withholdings/${id}/pdf`, `retencion_${voucher || id}.pdf`);
   };
 
   return (
@@ -71,7 +71,7 @@ export default function Withholdings() {
                 <td style={{ fontFamily: 'monospace' }}>{Number(w.amount_usd).toFixed(2)}</td>
                 <td><span className={`badge ${w.status === 'activa' ? 'badge-green' : 'badge-red'}`}>{w.status}</span></td>
                 <td>
-                  <button className="btn btn-sm" onClick={() => downloadPdf(w.id)} title="Descargar PDF">
+                  <button className="btn btn-sm" onClick={() => downloadPdf(w.id, w.voucher_number)} title="Descargar PDF">
                     <Download size={14} />
                   </button>
                 </td>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Lock, CheckCircle } from 'lucide-react';
-import api from '../api';
+import api, { downloadFile } from '../api';
 
 export default function PurchaseBook() {
   const now = new Date();
@@ -41,9 +41,9 @@ export default function PurchaseBook() {
       <div className="page-header">
         <h1>Libro de Compras</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <a href={`/api/v1/purchase-book/pdf?period=${period}`} className="btn" target="_blank"><Download size={14} /> PDF</a>
-          <a href={`/api/v1/purchase-book/excel?period=${period}`} className="btn" target="_blank"><Download size={14} /> Excel</a>
-          <a href={`/api/v1/purchase-book/seniat?period=${period}`} className="btn" target="_blank"><Download size={14} /> SENIAT TXT</a>
+          <button className="btn" onClick={() => downloadFile(`/api/v1/purchase-book/pdf?period=${period}`, `libro_compras_${period.replace('/', '-')}.pdf`)}><Download size={14} /> PDF</button>
+          <button className="btn" onClick={() => downloadFile(`/api/v1/purchase-book/excel?period=${period}`, `libro_compras_${period.replace('/', '-')}.xlsx`)}><Download size={14} /> Excel</button>
+          <button className="btn" onClick={() => downloadFile(`/api/v1/purchase-book/seniat?period=${period}`, `libro_compras_seniat_${period.replace('/', '-')}.txt`)}><Download size={14} /> SENIAT TXT</button>
         </div>
       </div>
 

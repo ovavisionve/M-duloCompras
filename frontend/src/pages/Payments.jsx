@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Download, XCircle } from 'lucide-react';
-import api from '../api';
+import api, { downloadFile } from '../api';
 
 const methodLabels = {
   transferencia: 'Transferencia', pago_movil: 'Pago Móvil', efectivo_ves: 'Efectivo VES',
@@ -23,8 +23,8 @@ export default function Payments() {
 
   useEffect(() => { load(); }, [filters]);
 
-  const downloadReceipt = (id) => {
-    window.open(`/api/v1/payments/${id}/receipt`, '_blank');
+  const downloadReceipt = (id, ref) => {
+    downloadFile(`/api/v1/payments/${id}/receipt`, `recibo_${ref || id}.pdf`);
   };
 
   const voidPayment = async (id) => {
@@ -99,7 +99,7 @@ export default function Payments() {
                 <td><span className={`badge ${p.status === 'activo' ? 'badge-green' : 'badge-red'}`}>{p.status}</span></td>
                 <td>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    <button className="btn btn-sm" onClick={() => downloadReceipt(p.id)} title="Recibo">
+                    <button className="btn btn-sm" onClick={() => downloadReceipt(p.id, p.reference_number)} title="Recibo">
                       <Download size={14} />
                     </button>
                     {p.status === 'activo' && (
