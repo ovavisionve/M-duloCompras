@@ -8,6 +8,12 @@ const methodLabels = {
   cripto: 'Cripto', paypal: 'PayPal',
 };
 
+const fmtDate = (d) => {
+  if (!d) return '';
+  const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
+};
+
 export default function Payments() {
   const [payments, setPayments] = useState([]);
   const [filters, setFilters] = useState({ payment_method: '', currency: '', status: 'activo' });
@@ -87,7 +93,7 @@ export default function Payments() {
           <tbody>
             {payments.map((p) => (
               <tr key={p.id}>
-                <td>{p.payment_date}</td>
+                <td>{fmtDate(p.payment_date)}</td>
                 <td>{methodLabels[p.payment_method] || p.payment_method}</td>
                 <td style={{ fontFamily: 'monospace' }}>{p.reference_number || '-'}</td>
                 <td>{p.currency}</td>

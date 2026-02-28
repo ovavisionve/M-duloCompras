@@ -23,6 +23,12 @@ const statusLabel = {
 
 const docTypeLabel = { FC: 'Factura Compra', FG: 'Factura Gasto', ND: 'Nota Débito', NC: 'Nota Crédito', DSF: 'Sin Factura' };
 
+const fmtDate = (d) => {
+  if (!d) return '';
+  const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
+};
+
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [filters, setFilters] = useState({ search: '', status: '', document_type: '' });
@@ -102,7 +108,7 @@ export default function Invoices() {
             <div><strong>Nº Control:</strong> {detail.control_number || 'N/A'}</div>
           </div>
           <div className="form-row" style={{ marginTop: '0.5rem' }}>
-            <div><strong>Fecha Emisión:</strong> {detail.emission_date}</div>
+            <div><strong>Fecha Emisión:</strong> {fmtDate(detail.emission_date)}</div>
             <div><strong>Moneda:</strong> {detail.currency}</div>
             <div><strong>Tasa BCV:</strong> {detail.exchange_rate}</div>
             <div><strong>Estatus:</strong> <span className={`badge ${statusBadge[detail.status]}`}>{statusLabel[detail.status]}</span></div>
@@ -122,7 +128,7 @@ export default function Invoices() {
               <strong>Pagos:</strong>
               {detail.payments.map((p, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
-                  {p.payment_date} - {p.payment_method} - {p.amount_applied} {p.currency} (Ref: {p.reference_number || 'N/A'})
+                  {fmtDate(p.payment_date)} - {p.payment_method} - {p.amount_applied} {p.currency} (Ref: {p.reference_number || 'N/A'})
                 </div>
               ))}
             </div>
@@ -149,7 +155,7 @@ export default function Invoices() {
           <tbody>
             {invoices.map((inv) => (
               <tr key={inv.id}>
-                <td>{inv.emission_date}</td>
+                <td>{fmtDate(inv.emission_date)}</td>
                 <td>{inv.supplier_name}</td>
                 <td><span className="badge badge-gray">{inv.document_type}</span></td>
                 <td>{inv.invoice_number}</td>

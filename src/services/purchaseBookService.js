@@ -1,5 +1,5 @@
 const db = require('../database/connection');
-const { round2 } = require('../utils/helpers');
+const { round2, fmtDateISO } = require('../utils/helpers');
 const { AppError } = require('../middleware/errorHandler');
 const auditService = require('./auditService');
 const webhookService = require('./webhookService');
@@ -34,7 +34,7 @@ async function getPurchaseBook(period) {
 
     return {
       operation_number: index + 1,
-      emission_date: inv.emission_date,
+      emission_date: fmtDateISO(inv.emission_date),
       supplier_rif: inv.supplier_rif,
       supplier_name: inv.supplier_name,
       invoice_number: inv.invoice_number,

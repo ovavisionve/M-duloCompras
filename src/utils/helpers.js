@@ -58,6 +58,15 @@ function paginate(data, total, page, limit) {
   };
 }
 
+/**
+ * Format date to dd/mm/yyyy
+ */
+function fmtDateISO(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
+}
+
 module.exports = {
   validateRif,
   validateControlNumber,
@@ -66,4 +75,5 @@ module.exports = {
   round2,
   generateVoucherNumber,
   paginate,
+  fmtDateISO,
 };
