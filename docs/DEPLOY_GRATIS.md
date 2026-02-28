@@ -1,186 +1,197 @@
-# Comprar-IA - Despliegue GRATIS en Koyeb (SIN TARJETA)
+# Comprar-IA - Despliegue GRATIS (SIN TARJETA DE CREDITO)
 
 Guia paso a paso para desplegar Comprar-IA en internet **sin costo mensual y sin tarjeta de credito**.
 
 **Costo total: $0/mes | Tarjeta de credito: NO requerida**
 
-Koyeb incluye hosting + PostgreSQL gratis. Solo necesitas una cuenta de GitHub.
+Solo necesitas una cuenta de **GitHub**.
 
 ---
 
-## Paso 1: Crear cuenta en Koyeb
+## OPCION A: Leapcell.io (RECOMENDADA)
 
-1. Ir a **https://www.koyeb.com**
-2. Click **"Get started for free"**
+Leapcell incluye Node.js hosting + PostgreSQL gratis, todo en una sola plataforma.
+
+### Paso 1: Crear cuenta
+
+1. Ir a **https://leapcell.io**
+2. Click **"Get Started"** o **"Sign Up"**
 3. Registrarse con tu cuenta de **GitHub** (no pide tarjeta)
-4. Completar el registro
 
----
+### Paso 2: Crear la Base de Datos PostgreSQL
 
-## Paso 2: Crear la Base de Datos PostgreSQL
-
-Koyeb incluye **1 base de datos PostgreSQL gratis**.
-
-1. En el panel de Koyeb, ir a **"Databases"** en el menu lateral
-2. Click **"Create Database Service"**
-3. Configurar:
+1. En el panel de Leapcell, click **"Create Database"**
+2. Configurar:
    - **Name**: `comprar-ia-db`
-   - **Region**: Washington, D.C. (us-east) o el mas cercano
-   - **Engine**: PostgreSQL
-4. Click **"Create"**
-5. Una vez creada, click en la base de datos y copiar el **Connection String**. Se ve asi:
-   ```
-   postgresql://koyeb-adm:xxxxx@ep-xxxxx.us-east-2.aws.neon.tech/koyebdb?sslmode=require
-   ```
-   **Guardar este string** para el siguiente paso.
-
----
-
-## Paso 3: Desplegar la Aplicacion
-
-1. En Koyeb, ir a **"Apps"** > **"Create App"**
-2. Seleccionar **"GitHub"** como fuente
-3. Conectar tu cuenta de GitHub si no lo has hecho
-4. Buscar y seleccionar el repositorio: **`ovavisionve/M-duloCompras`**
-5. Configurar el servicio:
-
-### Seccion: Source
-
-   - **Branch**: `main`
-   - **Builder**: Buildpack (detecta Node.js automaticamente)
-
-### Seccion: Build
-
-   - Click **"Override"** en Build command y escribir:
+   - **Region**: el mas cercano disponible
+3. Click **"Create"**
+4. En la pagina que aparece, **copiar la informacion de conexion**:
+   - Host, Port, Database, User, Password
+   - O el **Connection String** completo, que se ve asi:
      ```
-     npm install && cd frontend && npm install && npm run build
+     postgresql://usuario:password@host:5432/nombre_db?sslmode=require
      ```
+5. **Guardar este string** para el siguiente paso
 
-### Seccion: Run
+### Paso 3: Subir el codigo a GitHub
 
-   - Click **"Override"** en Run command y escribir:
-     ```
-     npm run migrate && npm run seed && npm start
-     ```
+Asegurate de que tu repositorio en GitHub (`ovavisionve/M-duloCompras`) tiene los ultimos cambios:
+```bash
+git push origin main
+```
 
-### Seccion: Environment Variables
+### Paso 4: Crear el Servicio Web
 
-   Click **"Add Variable"** para cada una:
+1. En Leapcell, click **"Create Service"** o **"New Service"**
+2. Conectar tu cuenta de GitHub si no lo has hecho
+3. Seleccionar el repositorio: **`ovavisionve/M-duloCompras`**
+4. Leapcell detecta automaticamente que es Node.js
+5. Configurar:
 
-   | Key | Value |
-   |-----|-------|
-   | `NODE_ENV` | `production` |
-   | `DATABASE_URL` | *(pegar el Connection String del Paso 2)* |
-   | `PORT` | `8000` |
-   | `JWT_SECRET` | `MiClaveSecreta2026ComprarIA` *(inventar algo largo)* |
-   | `JWT_EXPIRATION` | `8h` |
-   | `JWT_REFRESH_EXPIRATION` | `7d` |
-   | `WEBHOOK_SECRET` | `WebhookSecreto2026` *(inventar algo largo)* |
-   | `LOG_LEVEL` | `warn` |
+#### Build Command (si permite personalizar):
+```
+npm install && cd frontend && npm install && npm run build
+```
 
-   **Tip**: Para DATABASE_URL y JWT_SECRET puedes usar tipo **Secret** para mayor seguridad.
+#### Start Command:
+```
+npm run migrate && npm run seed && npm start
+```
 
-### Seccion: Exposing your service
+#### Environment Variables:
 
-   - **Port**: `8000`
-   - **Protocol**: HTTP
+Agregar las siguientes variables de entorno:
 
-### Nombre
+| Key | Value |
+|-----|-------|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | *(pegar el Connection String del Paso 2)* |
+| `PORT` | `8080` |
+| `JWT_SECRET` | *(inventar una clave larga, ej: MiClaveSecreta2026ComprarIA!@#)* |
+| `JWT_EXPIRATION` | `8h` |
+| `JWT_REFRESH_EXPIRATION` | `7d` |
+| `WEBHOOK_SECRET` | *(inventar otra clave, ej: WebhookSecreto2026!@#)* |
+| `LOG_LEVEL` | `warn` |
 
-   - **App name**: `comprar-ia`
-   - **Service name**: `web`
+**Nota sobre SSL**: La conexion a PostgreSQL en Leapcell requiere SSL. Esto ya esta configurado en el codigo (knexfile.js tiene `ssl: { rejectUnauthorized: false }` en produccion).
 
-6. Click **"Deploy"**
+6. Click **"Submit"** / **"Deploy"**
 7. Esperar 3-5 minutos mientras se construye
 
----
+### Paso 5: Verificar
 
-## Paso 4: Verificar
-
-1. Koyeb te dara una URL como: `https://comprar-ia-tu-org.koyeb.app`
+1. Leapcell te dara una URL como: `https://comprar-ia.leapcell.dev`
 2. Abrir esa URL en el navegador
 3. Deberia aparecer la pagina de login de **Comprar-IA**
 4. Iniciar sesion con:
    - **Email**: `admin@empresa.com`
    - **Contraseña**: `admin123`
 
-Si ves el dashboard, ya esta funcionando.
+### Actualizar la Aplicacion
+
+Cada vez que hagas `git push`, **Leapcell despliega automaticamente** (GitOps).
 
 ---
 
-## Paso 5: Dominio Personalizado (Opcional)
+## OPCION B: Back4app + Neon (ALTERNATIVA)
+
+Si Leapcell da problemas, esta combinacion tambien es gratis sin tarjeta.
+
+### Paso 1: Crear Base de Datos en Neon
+
+1. Ir a **https://neon.tech**
+2. Click **"Sign Up"** con cuenta de GitHub (no pide tarjeta)
+3. Click **"Create a project"**
+4. Configurar:
+   - **Project name**: `comprar-ia`
+   - **Database name**: `comprar_ia`
+5. **Copiar el Connection String** que aparece
+
+### Paso 2: Desplegar en Back4app
+
+1. Ir a **https://www.back4app.com**
+2. Click **"Sign Up"** con GitHub o Google (no pide tarjeta)
+3. Ir a **"Containers"** > **"Create New App"**
+4. Conectar tu repositorio de GitHub
+5. Configurar:
+   - **Port**: `8080`
+   - Agregar las **Environment Variables** (misma tabla de arriba, usando el DATABASE_URL de Neon)
+6. Click **"Deploy"**
+7. Esperar que construya la imagen Docker (usa el Dockerfile del repositorio)
+
+**Free tier de Back4app**: 0.25 CPU, 256 MB RAM, 100 GB transferencia/mes
+**Free tier de Neon**: 0.5 GB almacenamiento, 100 CU-hours/mes
+
+---
+
+## OPCION C: Hugging Face Spaces (PARA EXPERIMENTAR)
+
+Hugging Face permite correr contenedores Docker gratis sin tarjeta.
+
+1. Ir a **https://huggingface.co**
+2. Crear cuenta (gratis, sin tarjeta)
+3. Click **"New Space"**
+4. Seleccionar **"Docker"** como SDK
+5. Subir los archivos del proyecto (o conectar GitHub)
+6. El Dockerfile del repositorio se encarga del resto
+
+---
+
+## Dominio Personalizado (Opcional, cualquier opcion)
 
 Si quieres usar tu propio dominio (ejemplo: `app.comprar-ia.com`):
 
-1. En Koyeb, ir a tu App > **Settings** > **Domains**
-2. Click **"Add Custom Domain"**
-3. Escribir: `app.comprar-ia.com`
-4. En tu registrador de dominio (GoDaddy, Namecheap, etc.), agregar un registro CNAME:
+1. En la plataforma elegida, buscar la opcion de **Custom Domains**
+2. Agregar tu dominio
+3. En tu registrador de dominio, agregar un registro CNAME:
    - **Tipo**: CNAME
    - **Nombre**: `app`
-   - **Valor**: *(el valor que Koyeb te indique)*
-5. Koyeb genera certificado SSL automaticamente
+   - **Valor**: *(la URL que la plataforma te indique)*
+4. Se genera certificado SSL automaticamente
 
 ---
 
-## Limitaciones del Plan Gratis
+## Comparativa de Opciones
 
-| Caracteristica | Limite |
-|---------------|--------|
-| Web Services | 1 servicio (suficiente) |
-| PostgreSQL | 1 base de datos incluida |
-| Escalado | Eco instance (compartida) |
-| Sleep | Se duerme tras inactividad, despierta en segundos |
-| Para ~100 docs/mes | Mas que suficiente |
-
----
-
-## Actualizar la Aplicacion
-
-Cada vez que hagas `git push` a la branch configurada en Koyeb, **se despliega automaticamente**. No necesitas hacer nada mas.
+| | Leapcell | Back4app + Neon | HF Spaces |
+|--|----------|----------------|-----------|
+| Tarjeta | NO | NO | NO |
+| PostgreSQL incluido | SI | Neon aparte | NO (Neon aparte) |
+| Deploy desde GitHub | SI | SI | SI |
+| SSL automatico | SI | SI | SI |
+| RAM gratis | Generoso | 256 MB | 16 GB CPU |
+| Ideal para | Produccion ligera | Contenedores | Demos/pruebas |
 
 ---
 
 ## Solucion de Problemas
 
 ### "Build failed"
-- Ir a Koyeb > tu App > **Deployments** > click en el deployment fallido
-- Revisar los **Build logs** para ver el error
-- Errores comunes: falta alguna variable de entorno, o el repositorio no es publico
+- Revisar los logs de build en la plataforma
+- Error comun: `NODE_ENV=production` hace que se eliminen devDependencies. Si el build del frontend necesita alguna, moverla a dependencies
 
-### "Runtime error" (la app no arranca)
-- Revisar **Runtime logs** en Koyeb
-- Verificar que DATABASE_URL es correcto (copiar de nuevo desde la seccion Databases)
+### "Runtime error" / la app no arranca
+- Revisar los runtime logs
+- Verificar que DATABASE_URL es correcto y tiene `?sslmode=require`
 - Verificar que todas las variables de entorno estan configuradas
 
 ### La base de datos no tiene tablas
-- En Koyeb, ir a tu servicio > **Terminal** (o usar la Koyeb CLI):
+- El start command (`npm run migrate && npm run seed`) deberia crearlas automaticamente
+- Si no funciono, buscar acceso a terminal/shell en la plataforma y ejecutar:
   ```bash
   npm run migrate
   npm run seed
   ```
 
-### La app se "duerme"
-- Es normal en el plan gratis. Cuando alguien entra despues de inactividad, tarda unos segundos en despertar. Luego funciona normal.
-
----
-
-## Alternativa: Back4app (si Koyeb da problemas)
-
-Back4app tambien ofrece hosting gratis sin tarjeta:
-- **URL**: https://www.back4app.com
-- **Free tier**: 256 MB RAM, 100 GB transferencia, 600 horas activas/mes
-- **Proceso**: Similar, se despliega desde GitHub con Dockerfile
-- Para la base de datos, usar **Neon** (https://neon.tech) que tambien es gratis sin tarjeta
+### La app se "duerme" tras inactividad
+- Es normal en planes gratis. Cuando alguien entra, tarda unos segundos en despertar
 
 ---
 
 ## Costos si Creces
 
-Si en el futuro necesitas mas capacidad:
-
-| Necesidad | Solucion | Costo |
-|-----------|---------|-------|
-| Sin limites de sleep | Koyeb Starter | ~$7/mes |
-| Mas almacenamiento DB | Koyeb DB upgrade | Segun uso |
-| Mucho trafico | Koyeb Pro | ~$79/mes |
+| Necesidad | Solucion | Costo aproximado |
+|-----------|---------|-----------------|
+| Mas recursos | Leapcell Pro | Segun uso |
+| Base de datos mas grande | Neon Launch | $5/mes |
+| Sin limites de sleep | Plan pago en cualquier plataforma | $5-10/mes |
