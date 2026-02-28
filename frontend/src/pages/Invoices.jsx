@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Eye, FileText } from 'lucide-react';
+import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3 } from 'lucide-react';
 import api from '../api';
 
 const statusBadge = {
@@ -53,6 +53,17 @@ export default function Invoices() {
   const viewDetail = async (id) => {
     const { data } = await api.get(`/invoices/${id}`);
     setDetail(data.data);
+  };
+
+  const changeStatus = async (id, newStatus, confirmMsg) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    try {
+      await api.patch(`/invoices/${id}/status`, { status: newStatus });
+      await viewDetail(id);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Error al cambiar estatus');
+    }
   };
 
   return (
@@ -133,6 +144,42 @@ export default function Invoices() {
               ))}
             </div>
           )}
+
+          {/* ── Status Actions ── */}
+          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {detail.status === 'borrador' && (
+              <button className="btn btn-primary btn-sm" onClick={() => changeStatus(detail.id, 'registrada', 'Registrar esta factura?')}>
+                <CheckCircle size={14} /> Registrar
+              </button>
+            )}
+            {detail.status === 'registrada' && (
+              <button className="btn btn-sm" style={{ backgroundColor: 'var(--warning)', color: '#fff' }}
+                onClick={() => changeStatus(detail.id, 'en_disputa', 'Marcar factura en disputa?')}>
+                <AlertTriangle size={14} /> En Disputa
+              </button>
+            )}
+            {detail.status === 'en_disputa' && (
+              <button className="btn btn-primary btn-sm" onClick={() => changeStatus(detail.id, 'registrada', 'Resolver disputa y volver a Registrada?')}>
+                <RotateCcw size={14} /> Resolver Disputa
+              </button>
+            )}
+            {!['anulada', 'pagada'].includes(detail.status) && (
+              <button className="btn btn-danger btn-sm" onClick={() => changeStatus(detail.id, 'anulada', 'Anular esta factura? Esta accion requiere permisos de administrador para revertir.')}>
+                <XCircle size={14} /> Anular
+              </button>
+            )}
+            {detail.status === 'anulada' && (
+              <button className="btn btn-sm" style={{ backgroundColor: 'var(--success)', color: '#fff' }}
+                onClick={() => changeStatus(detail.id, 'registrada', 'Reactivar esta factura? (Solo admin)')}>
+                <RotateCcw size={14} /> Reactivar
+              </button>
+            )}
+            {['borrador', 'registrada'].includes(detail.status) && (
+              <button className="btn btn-sm" onClick={() => navigate(`/invoices/new?edit=${detail.id}`)}>
+                <Edit3 size={14} /> Editar
+              </button>
+            )}
+          </div>
         </div>
       )}
 
