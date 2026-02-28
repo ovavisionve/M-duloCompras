@@ -8,14 +8,18 @@ const transports = [
   }),
 ];
 
-// Only add file transports if not in production cloud (where filesystem may be read-only)
-if (process.env.NODE_ENV !== 'production') {
-  const logDir = process.env.LOG_DIR || './logs';
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-  transports.push(
-    new winston.transports.File({ filename: path.join(logDir, 'error.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(logDir, 'combined.log') }),
-  );
+// Add file transports only if LOG_DIR is explicitly set and writable
+if (process.env.LOG_DIR) {
+  try {
+    const logDir = process.env.LOG_DIR;
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    transports.push(
+      new winston.transports.File({ filename: path.join(logDir, 'error.log'), level: 'error' }),
+      new winston.transports.File({ filename: path.join(logDir, 'combined.log') }),
+    );
+  } catch {
+    // Filesystem not writable, skip file transports
+  }
 }
 
 const logger = winston.createLogger({
