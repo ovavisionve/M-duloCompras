@@ -1,90 +1,125 @@
-# Comprar-IA - Despliegue GRATIS (Render + Neon)
+# Comprar-IA - Despliegue GRATIS en Koyeb (SIN TARJETA)
 
-Guia paso a paso para desplegar Comprar-IA en internet sin costo mensual.
+Guia paso a paso para desplegar Comprar-IA en internet **sin costo mensual y sin tarjeta de credito**.
 
-**Costo total: $0/mes**
+**Costo total: $0/mes | Tarjeta de credito: NO requerida**
 
----
-
-## Paso 1: Crear Base de Datos en Neon (PostgreSQL gratis)
-
-1. Ir a **https://neon.tech**
-2. Click **"Sign Up"** (usar cuenta de GitHub)
-3. Click **"Create a project"**
-4. Configurar:
-   - **Project name**: `comprar-ia`
-   - **Region**: US East (o el mas cercano)
-   - **Database name**: `comprar_ia`
-5. Click **"Create Project"**
-6. **COPIAR** el **Connection String** que aparece. Se ve asi:
-   ```
-   postgresql://neondb_owner:abc123xyz@ep-cool-name-12345.us-east-2.aws.neon.tech/comprar_ia?sslmode=require
-   ```
-   **Guardar este string**, lo necesitaras en el siguiente paso.
+Koyeb incluye hosting + PostgreSQL gratis. Solo necesitas una cuenta de GitHub.
 
 ---
 
-## Paso 2: Desplegar Backend + Frontend en Render
+## Paso 1: Crear cuenta en Koyeb
 
-1. Ir a **https://render.com**
-2. Click **"Sign Up"** (usar cuenta de GitHub)
-3. Click **"New +"** > **"Web Service"**
-4. Conectar tu repositorio de GitHub: `ovavisionve/M-duloCompras`
-5. Configurar:
-   - **Name**: `comprar-ia`
-   - **Region**: US East (mismo que Neon)
-   - **Branch**: `main` (o la branch principal)
-   - **Runtime**: Node
-   - **Build Command**:
+1. Ir a **https://www.koyeb.com**
+2. Click **"Get started for free"**
+3. Registrarse con tu cuenta de **GitHub** (no pide tarjeta)
+4. Completar el registro
+
+---
+
+## Paso 2: Crear la Base de Datos PostgreSQL
+
+Koyeb incluye **1 base de datos PostgreSQL gratis**.
+
+1. En el panel de Koyeb, ir a **"Databases"** en el menu lateral
+2. Click **"Create Database Service"**
+3. Configurar:
+   - **Name**: `comprar-ia-db`
+   - **Region**: Washington, D.C. (us-east) o el mas cercano
+   - **Engine**: PostgreSQL
+4. Click **"Create"**
+5. Una vez creada, click en la base de datos y copiar el **Connection String**. Se ve asi:
+   ```
+   postgresql://koyeb-adm:xxxxx@ep-xxxxx.us-east-2.aws.neon.tech/koyebdb?sslmode=require
+   ```
+   **Guardar este string** para el siguiente paso.
+
+---
+
+## Paso 3: Desplegar la Aplicacion
+
+1. En Koyeb, ir a **"Apps"** > **"Create App"**
+2. Seleccionar **"GitHub"** como fuente
+3. Conectar tu cuenta de GitHub si no lo has hecho
+4. Buscar y seleccionar el repositorio: **`ovavisionve/M-duloCompras`**
+5. Configurar el servicio:
+
+### Seccion: Source
+
+   - **Branch**: `main`
+   - **Builder**: Buildpack (detecta Node.js automaticamente)
+
+### Seccion: Build
+
+   - Click **"Override"** en Build command y escribir:
      ```
-     npm install && cd frontend && npm install && npm run build && cd ..
+     npm install && cd frontend && npm install && npm run build
      ```
-   - **Start Command**:
+
+### Seccion: Run
+
+   - Click **"Override"** en Run command y escribir:
      ```
      npm run migrate && npm run seed && npm start
      ```
-   - **Plan**: **Free**
 
-6. Click **"Advanced"** y agregar **Environment Variables**:
+### Seccion: Environment Variables
+
+   Click **"Add Variable"** para cada una:
 
    | Key | Value |
    |-----|-------|
    | `NODE_ENV` | `production` |
-   | `DATABASE_URL` | *(pegar el connection string de Neon del Paso 1)* |
-   | `JWT_SECRET` | *(inventar una clave larga, ejemplo: MiClaveSecreta2026ComprarIA!@#)* |
+   | `DATABASE_URL` | *(pegar el Connection String del Paso 2)* |
+   | `PORT` | `8000` |
+   | `JWT_SECRET` | `MiClaveSecreta2026ComprarIA` *(inventar algo largo)* |
    | `JWT_EXPIRATION` | `8h` |
    | `JWT_REFRESH_EXPIRATION` | `7d` |
-   | `WEBHOOK_SECRET` | *(inventar otra clave, ejemplo: WebhookSecreto2026!@#)* |
+   | `WEBHOOK_SECRET` | `WebhookSecreto2026` *(inventar algo largo)* |
    | `LOG_LEVEL` | `warn` |
-   | `PORT` | `7000` |
 
-7. Click **"Create Web Service"**
-8. Esperar 3-5 minutos mientras se construye y despliega
+   **Tip**: Para DATABASE_URL y JWT_SECRET puedes usar tipo **Secret** para mayor seguridad.
+
+### Seccion: Exposing your service
+
+   - **Port**: `8000`
+   - **Protocol**: HTTP
+
+### Nombre
+
+   - **App name**: `comprar-ia`
+   - **Service name**: `web`
+
+6. Click **"Deploy"**
+7. Esperar 3-5 minutos mientras se construye
 
 ---
 
-## Paso 3: Verificar
+## Paso 4: Verificar
 
-1. Render te dara una URL como: `https://comprar-ia.onrender.com`
+1. Koyeb te dara una URL como: `https://comprar-ia-tu-org.koyeb.app`
 2. Abrir esa URL en el navegador
 3. Deberia aparecer la pagina de login de **Comprar-IA**
 4. Iniciar sesion con:
-   - Email: `admin@empresa.com`
-   - Contraseña: `admin123`
+   - **Email**: `admin@empresa.com`
+   - **Contraseña**: `admin123`
+
+Si ves el dashboard, ya esta funcionando.
 
 ---
 
-## Paso 4: Dominio Personalizado (Opcional)
+## Paso 5: Dominio Personalizado (Opcional)
 
 Si quieres usar tu propio dominio (ejemplo: `app.comprar-ia.com`):
 
-1. En Render, ir a tu servicio > **Settings** > **Custom Domains**
-2. Agregar tu dominio: `app.comprar-ia.com`
-3. En tu registrador de dominio (GoDaddy, Namecheap, etc.), agregar un registro CNAME:
+1. En Koyeb, ir a tu App > **Settings** > **Domains**
+2. Click **"Add Custom Domain"**
+3. Escribir: `app.comprar-ia.com`
+4. En tu registrador de dominio (GoDaddy, Namecheap, etc.), agregar un registro CNAME:
    - **Tipo**: CNAME
    - **Nombre**: `app`
-   - **Valor**: `comprar-ia.onrender.com`
-4. Render genera certificado SSL automaticamente
+   - **Valor**: *(el valor que Koyeb te indique)*
+5. Koyeb genera certificado SSL automaticamente
 
 ---
 
@@ -92,37 +127,51 @@ Si quieres usar tu propio dominio (ejemplo: `app.comprar-ia.com`):
 
 | Caracteristica | Limite |
 |---------------|--------|
-| Render (backend) | Se duerme tras 15 min sin uso, despierta en ~30 seg |
-| Neon (database) | 0.5 GB almacenamiento, 190 horas de computo/mes |
-| Para 100 docs/mes | Mas que suficiente |
-
-**Nota**: El "despertar" de 30 segundos solo ocurre la primera vez que alguien entra despues de 15 minutos de inactividad. Luego funciona normal hasta que vuelva a estar inactivo.
+| Web Services | 1 servicio (suficiente) |
+| PostgreSQL | 1 base de datos incluida |
+| Escalado | Eco instance (compartida) |
+| Sleep | Se duerme tras inactividad, despierta en segundos |
+| Para ~100 docs/mes | Mas que suficiente |
 
 ---
 
 ## Actualizar la Aplicacion
 
-Cada vez que hagas `git push` a la branch configurada en Render, **se despliega automaticamente**. No necesitas hacer nada mas.
+Cada vez que hagas `git push` a la branch configurada en Koyeb, **se despliega automaticamente**. No necesitas hacer nada mas.
 
 ---
 
-## Solución de Problemas
+## Solucion de Problemas
 
-### "Application error" al abrir la URL
-- Ir a Render > tu servicio > **Logs** para ver el error
-- Verificar que DATABASE_URL es correcto
+### "Build failed"
+- Ir a Koyeb > tu App > **Deployments** > click en el deployment fallido
+- Revisar los **Build logs** para ver el error
+- Errores comunes: falta alguna variable de entorno, o el repositorio no es publico
+
+### "Runtime error" (la app no arranca)
+- Revisar **Runtime logs** en Koyeb
+- Verificar que DATABASE_URL es correcto (copiar de nuevo desde la seccion Databases)
 - Verificar que todas las variables de entorno estan configuradas
 
 ### La base de datos no tiene tablas
-- En Render, ir a **Shell** y ejecutar:
+- En Koyeb, ir a tu servicio > **Terminal** (o usar la Koyeb CLI):
   ```bash
   npm run migrate
   npm run seed
   ```
 
-### Cambiar contraseña del admin
-- Iniciar sesion con `admin123`
-- Ir a un futuro modulo de gestion de usuarios, o cambiar directamente en la base de datos
+### La app se "duerme"
+- Es normal en el plan gratis. Cuando alguien entra despues de inactividad, tarda unos segundos en despertar. Luego funciona normal.
+
+---
+
+## Alternativa: Back4app (si Koyeb da problemas)
+
+Back4app tambien ofrece hosting gratis sin tarjeta:
+- **URL**: https://www.back4app.com
+- **Free tier**: 256 MB RAM, 100 GB transferencia, 600 horas activas/mes
+- **Proceso**: Similar, se despliega desde GitHub con Dockerfile
+- Para la base de datos, usar **Neon** (https://neon.tech) que tambien es gratis sin tarjeta
 
 ---
 
@@ -132,6 +181,6 @@ Si en el futuro necesitas mas capacidad:
 
 | Necesidad | Solucion | Costo |
 |-----------|---------|-------|
-| Sin "despertar" de 30 seg | Render Starter | $7/mes |
-| Mas almacenamiento DB | Neon Launch | $19/mes |
-| Los dos | Render + Neon pagos | $26/mes |
+| Sin limites de sleep | Koyeb Starter | ~$7/mes |
+| Mas almacenamiento DB | Koyeb DB upgrade | Segun uso |
+| Mucho trafico | Koyeb Pro | ~$79/mes |
