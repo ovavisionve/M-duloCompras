@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3 } from 'lucide-react';
+import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3, DollarSign } from 'lucide-react';
 import api from '../api';
 
 const statusBadge = {
@@ -34,6 +34,7 @@ export default function Invoices() {
   const [filters, setFilters] = useState({ search: '', status: '', document_type: '' });
   const [pagination, setPagination] = useState({ page: 1, total: 0 });
   const [detail, setDetail] = useState(null);
+  const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -51,8 +52,12 @@ export default function Invoices() {
   useEffect(() => { load(); }, [filters, pagination.page]);
 
   const viewDetail = async (id) => {
-    const { data } = await api.get(`/invoices/${id}`);
-    setDetail(data.data);
+    const [invoiceRes, balanceRes] = await Promise.all([
+      api.get(`/invoices/${id}`),
+      api.get(`/invoices/${id}/balance`),
+    ]);
+    setDetail(invoiceRes.data.data);
+    setBalance(balanceRes.data.data);
   };
 
   const changeStatus = async (id, newStatus, confirmMsg) => {
@@ -110,7 +115,7 @@ export default function Invoices() {
         <div className="card" style={{ marginBottom: '1rem', border: '2px solid var(--primary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3>Detalle de Factura</h3>
-            <button className="btn btn-sm" onClick={() => setDetail(null)}>Cerrar</button>
+            <button className="btn btn-sm" onClick={() => { setDetail(null); setBalance(null); }}>Cerrar</button>
           </div>
           <div className="form-row">
             <div><strong>Proveedor:</strong> {detail.supplier_name} ({detail.supplier_rif})</div>
@@ -134,12 +139,37 @@ export default function Invoices() {
             <strong>Total VES:</strong> {Number(detail.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })} |{' '}
             <strong>Total USD:</strong> {Number(detail.total_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
+
+          {/* ── Balance / Saldo Pendiente ── */}
+          {balance && !['borrador', 'anulada'].includes(detail.status) && (
+            <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: '6px', background: balance.remaining <= 0.01 ? '#dcfce7' : '#fef9c3', border: `1px solid ${balance.remaining <= 0.01 ? '#86efac' : '#fde047'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.9rem' }}>
+                <div><strong>Total Factura:</strong> {Number(balance.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {balance.currency}</div>
+                <div><strong>Pagado:</strong> {Number(balance.total_paid).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
+                {balance.total_withheld > 0 && <div><strong>Retenido:</strong> {Number(balance.total_withheld).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>}
+                <div style={{ fontWeight: 'bold', color: balance.remaining <= 0.01 ? '#16a34a' : '#d97706' }}>
+                  Saldo Pendiente: {Number(balance.remaining).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {balance.currency}
+                </div>
+              </div>
+            </div>
+          )}
+
           {detail.payments?.length > 0 && (
             <div style={{ marginTop: '1rem' }}>
-              <strong>Pagos:</strong>
+              <strong>Pagos aplicados:</strong>
               {detail.payments.map((p, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
-                  {fmtDate(p.payment_date)} - {p.payment_method} - {p.amount_applied} {p.currency} (Ref: {p.reference_number || 'N/A'})
+                  {fmtDate(p.payment_date)} - {p.payment_method} - {Number(p.amount_applied).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {p.currency} (Ref: {p.reference_number || 'N/A'})
+                </div>
+              ))}
+            </div>
+          )}
+          {detail.withholdings?.length > 0 && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <strong>Retenciones aplicadas:</strong>
+              {detail.withholdings.map((w, i) => (
+                <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
+                  {w.withholding_type} - {Number(w.withheld_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Comp: {w.voucher_number || 'N/A'})
                 </div>
               ))}
             </div>
@@ -147,36 +177,63 @@ export default function Invoices() {
 
           {/* ── Status Actions ── */}
           <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {/* Borrador → Registrar o Editar */}
             {detail.status === 'borrador' && (
-              <button className="btn btn-primary btn-sm" onClick={() => changeStatus(detail.id, 'registrada', 'Registrar esta factura?')}>
-                <CheckCircle size={14} /> Registrar
-              </button>
+              <>
+                <button className="btn btn-primary btn-sm" onClick={() => changeStatus(detail.id, 'registrada', 'Registrar esta factura? Una vez registrada no se podrá editar (documento fiscal).')}>
+                  <CheckCircle size={14} /> Registrar
+                </button>
+                <button className="btn btn-sm" onClick={() => navigate(`/invoices/new?edit=${detail.id}`)}>
+                  <Edit3 size={14} /> Editar
+                </button>
+              </>
             )}
+
+            {/* Registrada → Registrar Pago, En Disputa */}
             {detail.status === 'registrada' && (
-              <button className="btn btn-sm" style={{ backgroundColor: 'var(--warning)', color: '#fff' }}
-                onClick={() => changeStatus(detail.id, 'en_disputa', 'Marcar factura en disputa?')}>
-                <AlertTriangle size={14} /> En Disputa
-              </button>
+              <>
+                <button className="btn btn-primary btn-sm" onClick={() => navigate(`/payments?invoice_id=${detail.id}`)}>
+                  <DollarSign size={14} /> Registrar Pago
+                </button>
+                <button className="btn btn-sm" style={{ backgroundColor: 'var(--warning)', color: '#fff' }}
+                  onClick={() => changeStatus(detail.id, 'en_disputa', 'Marcar factura en disputa?')}>
+                  <AlertTriangle size={14} /> En Disputa
+                </button>
+              </>
             )}
+
+            {/* Pago Parcial → Registrar Pago, En Disputa */}
+            {detail.status === 'pago_parcial' && (
+              <>
+                <button className="btn btn-primary btn-sm" onClick={() => navigate(`/payments?invoice_id=${detail.id}`)}>
+                  <DollarSign size={14} /> Registrar Pago
+                </button>
+                <button className="btn btn-sm" style={{ backgroundColor: 'var(--warning)', color: '#fff' }}
+                  onClick={() => changeStatus(detail.id, 'en_disputa', 'Marcar factura en disputa?')}>
+                  <AlertTriangle size={14} /> En Disputa
+                </button>
+              </>
+            )}
+
+            {/* En Disputa → Resolver */}
             {detail.status === 'en_disputa' && (
               <button className="btn btn-primary btn-sm" onClick={() => changeStatus(detail.id, 'registrada', 'Resolver disputa y volver a Registrada?')}>
                 <RotateCcw size={14} /> Resolver Disputa
               </button>
             )}
+
+            {/* Anular (todos excepto anulada y pagada) */}
             {!['anulada', 'pagada'].includes(detail.status) && (
-              <button className="btn btn-danger btn-sm" onClick={() => changeStatus(detail.id, 'anulada', 'Anular esta factura? Esta accion requiere permisos de administrador para revertir.')}>
+              <button className="btn btn-danger btn-sm" onClick={() => changeStatus(detail.id, 'anulada', 'Anular esta factura? Esta acción requiere permisos de administrador para revertir.')}>
                 <XCircle size={14} /> Anular
               </button>
             )}
+
+            {/* Anulada → Reactivar (solo admin) */}
             {detail.status === 'anulada' && (
               <button className="btn btn-sm" style={{ backgroundColor: 'var(--success)', color: '#fff' }}
                 onClick={() => changeStatus(detail.id, 'registrada', 'Reactivar esta factura? (Solo admin)')}>
                 <RotateCcw size={14} /> Reactivar
-              </button>
-            )}
-            {['borrador', 'registrada'].includes(detail.status) && (
-              <button className="btn btn-sm" onClick={() => navigate(`/invoices/new?edit=${detail.id}`)}>
-                <Edit3 size={14} /> Editar
               </button>
             )}
           </div>

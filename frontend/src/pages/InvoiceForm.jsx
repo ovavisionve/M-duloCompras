@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 
 const INVOICE_DRAFT_KEY = 'draft_invoice';
@@ -11,11 +11,14 @@ function loadDraft(key, defaults) {
 
 export default function InvoiceForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit');
   const [suppliers, setSuppliers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [costCenters, setCostCenters] = useState([]);
   const [rate, setRate] = useState(null);
   const [error, setError] = useState('');
+  const [editLoading, setEditLoading] = useState(!!editId);
   const today = new Date().toISOString().split('T')[0];
   const defaultForm = {
     supplier_id: '', document_type: 'FC', invoice_number: '', control_number: '',
@@ -26,9 +29,9 @@ export default function InvoiceForm() {
     taxable_amount: '', exempt_amount: '0', non_subject_amount: '0',
     vat_rate: '16', igtf_amount: '0', status: 'registrada',
   };
-  const [form, setForm] = useState(() => loadDraft(INVOICE_DRAFT_KEY, defaultForm));
+  const [form, setForm] = useState(() => editId ? defaultForm : loadDraft(INVOICE_DRAFT_KEY, defaultForm));
 
-  useEffect(() => { localStorage.setItem(INVOICE_DRAFT_KEY, JSON.stringify(form)); }, [form]);
+  useEffect(() => { if (!editId) localStorage.setItem(INVOICE_DRAFT_KEY, JSON.stringify(form)); }, [form, editId]);
 
   useEffect(() => {
     api.get('/suppliers', { params: { limit: 200 } }).then((r) => setSuppliers(r.data.data));
@@ -37,9 +40,46 @@ export default function InvoiceForm() {
     api.get('/exchange-rates/today').then((r) => {
       if (r.data.data) {
         setRate(r.data.data);
-        setForm((f) => ({ ...f, exchange_rate: r.data.data.rate }));
+        if (!editId) setForm((f) => ({ ...f, exchange_rate: r.data.data.rate }));
       }
     }).catch(() => {});
+
+    // Load existing invoice for editing
+    if (editId) {
+      api.get(`/invoices/${editId}`).then((r) => {
+        const inv = r.data.data;
+        if (inv.status !== 'borrador') {
+          setError('Solo se pueden editar facturas en estado Borrador. Las facturas registradas son documentos fiscales y no se pueden modificar; emita una Nota de Crédito para corregir.');
+          setEditLoading(false);
+          return;
+        }
+        setForm({
+          supplier_id: inv.supplier_id || '',
+          document_type: inv.document_type || 'FC',
+          invoice_number: inv.invoice_number || '',
+          control_number: inv.control_number || '',
+          emission_date: inv.emission_date ? inv.emission_date.split('T')[0] : today,
+          reception_date: inv.reception_date ? inv.reception_date.split('T')[0] : today,
+          fiscal_period: inv.fiscal_period || '',
+          currency: inv.currency || 'VES',
+          exchange_rate: inv.exchange_rate || '',
+          exchange_rate_date: today,
+          description: inv.description || '',
+          expense_category_id: inv.expense_category_id || '',
+          cost_center_id: inv.cost_center_id || '',
+          taxable_amount: inv.taxable_amount || '',
+          exempt_amount: inv.exempt_amount || '0',
+          non_subject_amount: inv.non_subject_amount || '0',
+          vat_rate: inv.vat_rate || '16',
+          igtf_amount: inv.igtf_amount || '0',
+          status: inv.status || 'borrador',
+        });
+        setEditLoading(false);
+      }).catch((err) => {
+        setError(err.response?.data?.error?.message || 'Error al cargar factura');
+        setEditLoading(false);
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -68,7 +108,7 @@ export default function InvoiceForm() {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/invoices', {
+      const payload = {
         ...form,
         exchange_rate: parseFloat(form.exchange_rate),
         taxable_amount: parseFloat(form.taxable_amount) || 0,
@@ -78,7 +118,12 @@ export default function InvoiceForm() {
         igtf_amount: parseFloat(form.igtf_amount) || 0,
         expense_category_id: form.expense_category_id || null,
         cost_center_id: form.cost_center_id || null,
-      });
+      };
+      if (editId) {
+        await api.put(`/invoices/${editId}`, payload);
+      } else {
+        await api.post('/invoices', payload);
+      }
       localStorage.removeItem(INVOICE_DRAFT_KEY);
       navigate('/invoices');
     } catch (err) {
@@ -88,16 +133,18 @@ export default function InvoiceForm() {
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
+  if (editLoading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Cargando factura...</div>;
+
   return (
     <div>
       <div className="page-header">
-        <h1>Registrar Factura</h1>
+        <h1>{editId ? 'Editar Factura (Borrador)' : 'Registrar Factura'}</h1>
         <button className="btn" onClick={() => navigate('/invoices')}>Volver</button>
       </div>
 
       {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
 
-      <form onSubmit={handleSubmit}>
+      {error && editId ? null : <form onSubmit={handleSubmit}>
         {/* Supplier & Doc Type */}
         <div className="card" style={{ marginBottom: '1rem' }}>
           <h3 style={{ marginBottom: '1rem', fontSize: '0.95rem' }}>Datos del Documento</h3>
@@ -224,10 +271,10 @@ export default function InvoiceForm() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="submit" className="btn btn-primary">Registrar Factura</button>
+          <button type="submit" className="btn btn-primary">{editId ? 'Guardar Cambios' : 'Registrar Factura'}</button>
           <button type="button" className="btn" onClick={() => navigate('/invoices')}>Cancelar</button>
         </div>
-      </form>
+      </form>}
     </div>
   );
 }

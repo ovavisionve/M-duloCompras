@@ -53,6 +53,41 @@ router.get('/:id/payments', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /invoices/:id/balance
+router.get('/:id/balance', authenticate, async (req, res, next) => {
+  try {
+    const db = require('../database/connection');
+    const invoice = await db('invoices').where({ id: req.params.id }).first();
+    if (!invoice) return res.status(404).json({ success: false, error: { message: 'Factura no encontrada' } });
+
+    const [paymentsResult] = await db('payment_invoices')
+      .join('payments', 'payment_invoices.payment_id', 'payments.id')
+      .where({ 'payment_invoices.invoice_id': req.params.id, 'payments.status': 'activo' })
+      .sum('payment_invoices.amount_applied as total');
+    const [withholdingsResult] = await db('withholding_invoices')
+      .join('withholdings', 'withholding_invoices.withholding_id', 'withholdings.id')
+      .where({ 'withholding_invoices.invoice_id': req.params.id, 'withholdings.status': 'activa' })
+      .sum('withholding_invoices.withheld_amount as total');
+
+    const totalPaid = parseFloat(paymentsResult?.total) || 0;
+    const totalWithheld = parseFloat(withholdingsResult?.total) || 0;
+    const totalAmount = parseFloat(invoice.total_amount);
+    const remaining = Math.max(0, Math.round((totalAmount - totalPaid - totalWithheld) * 100) / 100);
+
+    res.json({
+      success: true,
+      data: {
+        total_amount: totalAmount,
+        total_paid: totalPaid,
+        total_withheld: totalWithheld,
+        remaining,
+        currency: invoice.currency,
+        is_fully_paid: remaining <= 0.01,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 // GET /invoices/:id/withholdings
 router.get('/:id/withholdings', authenticate, async (req, res, next) => {
   try {
