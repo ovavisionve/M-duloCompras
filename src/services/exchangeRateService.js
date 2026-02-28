@@ -1,89 +1,128 @@
 const axios = require('axios');
+const https = require('https');
 const cheerio = require('cheerio');
 const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 const BCV_URL = 'https://www.bcv.org.ve/';
 
+// Agent that skips BCV's problematic SSL cert
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
 /**
- * Fetch BCV rate by scraping the official BCV website
+ * Scrape BCV rate directly from bcv.org.ve
+ */
+async function scrapeBcvDirect() {
+  const response = await axios.get(BCV_URL, {
+    timeout: 15000,
+    httpsAgent,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Language': 'es-VE,es;q=0.9,en;q=0.5',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
+    },
+    maxRedirects: 5,
+  });
+
+  const $ = cheerio.load(response.data);
+  let rateText = null;
+
+  // Primary: div#dolar section with rate in <strong>
+  const dolarSection = $('#dolar');
+  if (dolarSection.length) {
+    dolarSection.find('strong').each((_, el) => {
+      const text = $(el).text().trim();
+      if (/^\d+,\d+$/.test(text)) rateText = text;
+    });
+  }
+
+  // Fallback: centrado divs or tasa-del-dia fields
+  if (!rateText) {
+    $('div.centrado strong, .views-field-field-tasa-del-dia-usd strong, .field-content strong').each((_, el) => {
+      const text = $(el).text().trim();
+      if (/^\d+,\d+$/.test(text)) rateText = text;
+    });
+  }
+
+  // Last resort: regex on full body
+  if (!rateText) {
+    const body = $('body').text();
+    const match = body.match(/USD\s*[\s\S]*?(\d{2,3},\d{4})/);
+    if (match) rateText = match[1];
+  }
+
+  if (!rateText) throw new Error('No se pudo extraer tasa USD de bcv.org.ve');
+  return parseFloat(rateText.replace(',', '.'));
+}
+
+/**
+ * Fallback: fetch from pydolarve API (mirrors BCV official rate)
+ */
+async function fetchFromPyDolarApi() {
+  const urls = [
+    'https://pydolarve.org/api/v1/dollar?monitor=bcv',
+    'https://ve.dolarapi.com/v1/dolares/oficial',
+  ];
+
+  for (const url of urls) {
+    try {
+      const response = await axios.get(url, { timeout: 10000 });
+      const data = response.data;
+
+      // pydolarve format: { price: 78.50, ... }
+      if (data?.price) return parseFloat(data.price);
+      // dolarapi format: { promedio: 78.50, ... } or { compra: 78.50 }
+      if (data?.promedio) return parseFloat(data.promedio);
+      if (data?.compra) return parseFloat(data.compra);
+      // pydolarve array format
+      if (Array.isArray(data) && data[0]?.price) return parseFloat(data[0].price);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('Ninguna API de respaldo pudo obtener la tasa BCV');
+}
+
+/**
+ * Fetch BCV rate and store it - tries direct scrape, then API fallback
  */
 async function fetchAndStoreBcvRate() {
+  let rate;
+  let source = 'bcv_api';
+
   try {
-    const response = await axios.get(BCV_URL, {
-      timeout: 15000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'es-VE,es;q=0.9,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-      },
-    });
-
-    const $ = cheerio.load(response.data);
-
-    // BCV shows rates in div#dolar with the rate value in a <strong> tag
-    let rateText = null;
-
-    // Try primary selector: the USD rate section
-    const dolarSection = $('#dolar');
-    if (dolarSection.length) {
-      const strongTags = dolarSection.find('strong');
-      strongTags.each((_, el) => {
-        const text = $(el).text().trim();
-        // The rate looks like "78,5000" (comma as decimal separator)
-        if (/^\d+,\d+$/.test(text)) {
-          rateText = text;
-        }
-      });
+    rate = await scrapeBcvDirect();
+    logger.info(`BCV rate from direct scrape: ${rate}`);
+  } catch (scrapeErr) {
+    logger.warn(`Direct BCV scrape failed: ${scrapeErr.message}, trying API fallback...`);
+    try {
+      rate = await fetchFromPyDolarApi();
+      source = 'bcv_api'; // Still BCV official rate, just fetched via API mirror
+      logger.info(`BCV rate from API fallback: ${rate}`);
+    } catch (apiErr) {
+      logger.error(`All BCV rate sources failed. Scrape: ${scrapeErr.message}. API: ${apiErr.message}`);
+      throw new Error('No se pudo obtener la tasa BCV de ninguna fuente');
     }
-
-    // Fallback: look for the rate in the general exchange rate section
-    if (!rateText) {
-      $('div.centrado strong, div.views-field-field-tasa-del-dia-usd strong').each((_, el) => {
-        const text = $(el).text().trim();
-        if (/^\d+,\d+$/.test(text)) {
-          rateText = text;
-        }
-      });
-    }
-
-    // Last fallback: search entire page for pattern matching BCV rate format
-    if (!rateText) {
-      const bodyText = $('body').text();
-      const match = bodyText.match(/USD\s*[\s\S]*?(\d{2,3},\d{4})/);
-      if (match) {
-        rateText = match[1];
-      }
-    }
-
-    if (!rateText) {
-      throw new Error('No se pudo extraer la tasa USD del sitio del BCV');
-    }
-
-    // Convert "78,5000" -> 78.5000
-    const rate = parseFloat(rateText.replace(',', '.'));
-    if (isNaN(rate) || rate < 1) {
-      throw new Error(`Tasa BCV inválida: ${rateText}`);
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-
-    const existing = await db('exchange_rates').where({ rate_date: today }).first();
-    if (existing) {
-      await db('exchange_rates').where({ id: existing.id }).update({ rate, source: 'bcv_api', updated_at: new Date() });
-      logger.info(`BCV rate updated for ${today}: ${rate} (source: bcv.org.ve)`);
-    } else {
-      await db('exchange_rates').insert({ rate_date: today, rate, source: 'bcv_api' });
-      logger.info(`BCV rate stored for ${today}: ${rate} (source: bcv.org.ve)`);
-    }
-
-    return { date: today, rate, source: 'bcv_api' };
-  } catch (err) {
-    logger.error(`Failed to fetch BCV rate: ${err.message}`);
-    throw err;
   }
+
+  if (isNaN(rate) || rate < 1) {
+    throw new Error(`Tasa BCV inválida: ${rate}`);
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const existing = await db('exchange_rates').where({ rate_date: today }).first();
+  if (existing) {
+    await db('exchange_rates').where({ id: existing.id }).update({ rate, source, updated_at: new Date() });
+    logger.info(`BCV rate updated for ${today}: ${rate}`);
+  } else {
+    await db('exchange_rates').insert({ rate_date: today, rate, source });
+    logger.info(`BCV rate stored for ${today}: ${rate}`);
+  }
+
+  return { date: today, rate, source };
 }
 
 /**

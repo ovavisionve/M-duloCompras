@@ -61,8 +61,10 @@ router.post('/manual', authenticate, authorize('admin', 'contador'), async (req,
 router.post('/fetch', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const result = await exchangeRateService.fetchAndStoreBcvRate();
-    res.json({ success: true, data: result });
-  } catch (err) { next(err); }
+    res.json({ success: true, data: result, message: `Tasa BCV obtenida: ${result.rate} Bs/$` });
+  } catch (err) {
+    res.status(502).json({ success: false, error: { message: err.message || 'No se pudo obtener la tasa BCV' } });
+  }
 });
 
 module.exports = router;
