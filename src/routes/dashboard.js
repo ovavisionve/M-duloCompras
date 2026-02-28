@@ -87,8 +87,13 @@ router.get('/', authenticate, async (req, res, next) => {
       .where({ is_active: true })
       .select('bank_name', 'account_number', 'currency', 'current_balance');
 
-    // Today's exchange rate
-    const todayRate = await exchangeRateService.getTodayRate();
+    // Today's exchange rate (non-blocking)
+    let todayRate = null;
+    try {
+      todayRate = await exchangeRateService.getTodayRate();
+    } catch (e) {
+      // Don't fail the dashboard if exchange rate is unavailable
+    }
 
     res.json({
       success: true,
