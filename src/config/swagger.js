@@ -4,10 +4,10 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Módulo de Compras API',
+      title: 'Comprar-IA API',
       version: '1.0.0',
-      description: 'API para gestión de Compras, Gastos, Retenciones, Pagos y Libro de Compras. Adaptado a la normativa fiscal venezolana (SENIAT).',
-      contact: { name: 'Soporte', email: 'soporte@empresa.com' },
+      description: 'Comprar-IA - API para gestión inteligente de Compras, Gastos, Retenciones, Pagos y Libro de Compras. Adaptado a la normativa fiscal venezolana (SENIAT).',
+      contact: { name: 'Soporte Comprar-IA', email: 'soporte@comprar-ia.com' },
     },
     servers: [
       { url: '/api/v1', description: 'API v1' },

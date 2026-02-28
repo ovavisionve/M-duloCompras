@@ -1,7 +1,7 @@
 {
-  "name": "modulo-compras",
+  "name": "comprar-ia",
   "version": "1.0.0",
-  "description": "Módulo de Compras, Gastos, Retenciones, Pagos y Libro de Compras - Normativa Fiscal Venezolana",
+  "description": "Comprar-IA - Gestión de Compras, Gastos, Retenciones, Pagos y Libro de Compras - Normativa Fiscal Venezolana",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

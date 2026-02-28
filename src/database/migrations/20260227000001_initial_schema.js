@@ -1,6 +1,6 @@
 /**
  * Migration: Initial Schema
- * Módulo de Compras, Gastos, Retenciones, Pagos y Libro de Compras
+ * Comprar-IA - Compras, Gastos, Retenciones, Pagos y Libro de Compras
  * Normativa Fiscal Venezolana - SENIAT
  */
 exports.up = async function (knex) {

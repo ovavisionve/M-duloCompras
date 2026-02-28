@@ -28,8 +28,8 @@ export default function Login() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>Módulo de Compras</h1>
-        <p>Gestión Fiscal - Venezuela</p>
+        <h1>Comprar-IA</h1>
+        <p>Gestión Fiscal Inteligente - Venezuela</p>
         <form onSubmit={handleSubmit}>
           {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
           <div className="form-group">

@@ -35,8 +35,8 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        Módulo Compras
-        <small>Gestión Fiscal Venezuela</small>
+        Comprar-IA
+        <small>Gestión Fiscal Inteligente</small>
       </div>
       <nav className="sidebar-nav">
         <div className="sidebar-section">Principal</div>

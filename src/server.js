@@ -6,7 +6,7 @@ const logger = require('./utils/logger');
 const PORT = process.env.PORT || 7000;
 
 app.listen(PORT, () => {
-  logger.info(`Módulo de Compras API running on port ${PORT}`);
+  logger.info(`Comprar-IA API running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`Swagger docs: http://localhost:${PORT}/api-docs`);
   initScheduledJobs();
