@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search } from 'lucide-react';
 import api from '../api';
 
+const SUPPLIER_DRAFT_KEY = 'draft_supplier';
+
+function loadDraft(key, defaults) {
+  try { const saved = JSON.parse(localStorage.getItem(key)); return saved ? { ...defaults, ...saved } : defaults; }
+  catch { return defaults; }
+}
+
 export default function Suppliers() {
+  const defaultForm = { rif: '', business_name: '', fiscal_address: '', phone: '', email: '', taxpayer_type: 'ordinario', is_retention_agent: false };
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ rif: '', business_name: '', fiscal_address: '', phone: '', email: '', taxpayer_type: 'ordinario', is_retention_agent: false });
+  const [form, setForm] = useState(() => loadDraft(SUPPLIER_DRAFT_KEY, defaultForm));
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { localStorage.setItem(SUPPLIER_DRAFT_KEY, JSON.stringify(form)); }, [form]);
 
   const load = () => {
     setLoading(true);
@@ -24,7 +34,8 @@ export default function Suppliers() {
     try {
       await api.post('/suppliers', form);
       setShowForm(false);
-      setForm({ rif: '', business_name: '', fiscal_address: '', phone: '', email: '', taxpayer_type: 'ordinario', is_retention_agent: false });
+      setForm(defaultForm);
+      localStorage.removeItem(SUPPLIER_DRAFT_KEY);
       load();
     } catch (err) {
       alert(err.response?.data?.error?.message || 'Error al crear proveedor');

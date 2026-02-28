@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
+const INVOICE_DRAFT_KEY = 'draft_invoice';
+
+function loadDraft(key, defaults) {
+  try { const saved = JSON.parse(localStorage.getItem(key)); return saved ? { ...defaults, ...saved } : defaults; }
+  catch { return defaults; }
+}
+
 export default function InvoiceForm() {
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
@@ -9,16 +16,19 @@ export default function InvoiceForm() {
   const [costCenters, setCostCenters] = useState([]);
   const [rate, setRate] = useState(null);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
+  const today = new Date().toISOString().split('T')[0];
+  const defaultForm = {
     supplier_id: '', document_type: 'FC', invoice_number: '', control_number: '',
-    emission_date: new Date().toISOString().split('T')[0],
-    reception_date: new Date().toISOString().split('T')[0],
+    emission_date: today, reception_date: today,
     fiscal_period: '', currency: 'VES', exchange_rate: '',
-    exchange_rate_date: new Date().toISOString().split('T')[0],
+    exchange_rate_date: today,
     description: '', expense_category_id: '', cost_center_id: '',
     taxable_amount: '', exempt_amount: '0', non_subject_amount: '0',
     vat_rate: '16', igtf_amount: '0', status: 'registrada',
-  });
+  };
+  const [form, setForm] = useState(() => loadDraft(INVOICE_DRAFT_KEY, defaultForm));
+
+  useEffect(() => { localStorage.setItem(INVOICE_DRAFT_KEY, JSON.stringify(form)); }, [form]);
 
   useEffect(() => {
     api.get('/suppliers', { params: { limit: 200 } }).then((r) => setSuppliers(r.data.data));
@@ -69,6 +79,7 @@ export default function InvoiceForm() {
         expense_category_id: form.expense_category_id || null,
         cost_center_id: form.cost_center_id || null,
       });
+      localStorage.removeItem(INVOICE_DRAFT_KEY);
       navigate('/invoices');
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Error al registrar factura');
