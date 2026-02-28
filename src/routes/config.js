@@ -17,6 +17,8 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
   try {
     const { name, code, description } = req.body;
     if (!name || !code) throw new AppError('Nombre y código requeridos', 400);
+    const exists = await db('expense_categories').where({ name }).orWhere({ code }).first();
+    if (exists) throw new AppError('Ya existe una categoría con ese nombre o código', 409);
     const [cat] = await db('expense_categories').insert({ name, code, description }).returning('*');
     res.status(201).json({ success: true, data: cat });
   } catch (err) { next(err); }
@@ -35,6 +37,8 @@ router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async
   try {
     const { name, code, description } = req.body;
     if (!name || !code) throw new AppError('Nombre y código requeridos', 400);
+    const exists = await db('cost_centers').where({ name }).orWhere({ code }).first();
+    if (exists) throw new AppError('Ya existe un centro de costo con ese nombre o código', 409);
     const [center] = await db('cost_centers').insert({ name, code, description }).returning('*');
     res.status(201).json({ success: true, data: center });
   } catch (err) { next(err); }
