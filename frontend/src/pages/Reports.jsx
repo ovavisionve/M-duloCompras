@@ -30,7 +30,7 @@ function ExportButtons({ baseUrl, params, label }) {
 }
 
 function FilterPanel({ children, onApply, onClear }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <div className="card" style={{ marginBottom: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -133,7 +133,14 @@ export default function Reports() {
     setLoading(false);
   };
 
-  useEffect(() => { loadReport(); }, [activeReport]);
+  useEffect(() => {
+    // Don't auto-load reports that require user input first
+    if (activeReport === 'supplier-movements' && !selectedSupplier) {
+      setData(null);
+      return;
+    }
+    loadReport();
+  }, [activeReport]);
 
   const reports = [
     { key: 'accounts-payable', label: 'Cuentas por Pagar', icon: '📋' },
