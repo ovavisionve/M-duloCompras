@@ -150,7 +150,7 @@ async function listPayments(filters = {}) {
 
   const page = parseInt(filters.page) || 1;
   const limit = parseInt(filters.limit) || 20;
-  const [{ count }] = await query.clone().count();
+  const [{ count }] = await query.clone().clearSelect().count();
   const data = await query.orderBy('payment_date', 'desc').limit(limit).offset((page - 1) * limit);
 
   return { data, total: parseInt(count), page, limit };

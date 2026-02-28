@@ -201,8 +201,7 @@ async function listInvoices(filters = {}) {
   const limit = parseInt(filters.limit) || 20;
   const offset = (page - 1) * limit;
 
-  const countQuery = query.clone().count();
-  const [{ count }] = await countQuery;
+  const [{ count }] = await query.clone().clearSelect().count();
 
   const data = await query
     .orderBy('invoices.emission_date', 'desc')
