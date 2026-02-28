@@ -94,8 +94,8 @@ exports.seed = async function (knex) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split('T')[0];
-    // Simulate a realistic BCV rate around 78-80 Bs/$
-    const rate = 78.50 + (Math.random() * 1.5).toFixed(2) * 1;
+    // Realistic BCV rate ~419-421 Bs/$
+    const rate = 419.00 + (Math.random() * 2.5).toFixed(2) * 1;
     rates.push({ rate_date: dateStr, rate: parseFloat(rate.toFixed(6)), source: i === 0 ? 'manual' : 'bcv_api' });
   }
   await knex('exchange_rates').insert(rates);
