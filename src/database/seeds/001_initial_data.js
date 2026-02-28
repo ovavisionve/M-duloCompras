@@ -1,26 +1,12 @@
 const bcrypt = require('bcryptjs');
 
 exports.seed = async function (knex) {
-  // Clean tables in order
-  await knex('webhook_logs').del();
-  await knex('audit_logs').del();
-  await knex('webhook_subscriptions').del();
-  await knex('payment_invoices').del();
-  await knex('payments').del();
-  await knex('withholding_invoices').del();
-  await knex('withholdings').del();
-  await knex('withholding_rules').del();
-  await knex('invoice_items').del();
-  await knex('invoices').del();
-  await knex('suppliers').del();
-  await knex('bank_movements').del();
-  await knex('exchange_rates').del();
-  await knex('cost_centers').del();
-  await knex('expense_categories').del();
-  await knex('config').del();
-  await knex('api_keys').del();
-  await knex('users').del();
-  await knex('bank_accounts').del();
+  // Skip if data already exists (idempotent for production)
+  const existingUsers = await knex('users').where({ email: 'admin@empresa.com' }).first();
+  if (existingUsers) {
+    console.log('Seed data already exists, skipping...');
+    return;
+  }
 
   // ─── USERS ───
   const passwordHash = await bcrypt.hash('admin123', 12);
