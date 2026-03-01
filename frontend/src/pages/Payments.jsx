@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Download, XCircle, X, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Download, XCircle, DollarSign } from 'lucide-react';
 import api, { downloadFile } from '../api';
 
 const methodLabels = {
@@ -23,7 +23,7 @@ export default function Payments() {
   const [filters, setFilters] = useState({ payment_method: '', currency: '', status: 'activo' });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(!!preselectedInvoiceId);
-  const [showList, setShowList] = useState(!preselectedInvoiceId);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
 
   // Form state
   const today = new Date().toISOString().split('T')[0];
@@ -48,11 +48,12 @@ export default function Payments() {
   useEffect(() => { load(); }, [filters]);
 
   // Load pending invoices and exchange rate when form opens
-  useEffect(() => {
-    if (!showForm) return;
+  const loadFormData = () => {
+    setInvoicesLoading(true);
     api.get('/invoices', { params: { limit: 200 } })
       .then(async (r) => {
-        const payable = r.data.data.filter((inv) => ['registrada', 'pago_parcial'].includes(inv.status));
+        const allInvoices = r.data.data || [];
+        const payable = allInvoices.filter((inv) => ['registrada', 'pago_parcial'].includes(inv.status));
         // Get balance for each
         const withBalance = await Promise.all(payable.map(async (inv) => {
           try {
@@ -69,17 +70,24 @@ export default function Payments() {
             setAllocations([{ invoice_id: target.id, amount: String(target.balance.remaining) }]);
             setForm((f) => ({ ...f, amount: String(target.balance.remaining), currency: target.currency }));
           }
-          // Clear the URL param
           setSearchParams({}, { replace: true });
         }
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error('Error loading invoices:', err);
+        setFormError('Error al cargar facturas pendientes');
+      })
+      .finally(() => setInvoicesLoading(false));
 
     api.get('/exchange-rates/today').then((r) => {
       if (r.data.data) setForm((f) => ({ ...f, exchange_rate: r.data.data.rate }));
     }).catch(() => {});
 
     api.get('/banking/bank-accounts').then((r) => setBankAccounts(r.data.data || [])).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (showForm) loadFormData();
   }, [showForm]);
 
   const downloadReceipt = (id, ref) => {
@@ -147,7 +155,6 @@ export default function Payments() {
       setShowForm(false);
       setAllocations([]);
       setForm({ payment_date: today, payment_method: 'transferencia', currency: 'VES', amount: '', exchange_rate: '', reference_number: '', observations: '' });
-      setShowList(true);
       load();
     } catch (err) {
       setFormError(err.response?.data?.error?.message || 'Error al registrar pago');
@@ -163,8 +170,8 @@ export default function Payments() {
     <div>
       <div className="page-header">
         <h1>Pagos</h1>
-        <button className="btn btn-primary" onClick={() => { setShowForm(!showForm); if (!showForm) setShowList(false); }}>
-          {showForm ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Nuevo Pago</>}
+        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Cancelar' : <><Plus size={16} /> Nuevo Pago</>}
         </button>
       </div>
 
@@ -221,9 +228,17 @@ export default function Payments() {
                 <button type="button" className="btn btn-sm" onClick={addAllocation}><Plus size={14} /> Agregar Factura</button>
               </div>
 
-              {allocations.length === 0 && (
+              {invoicesLoading && (
                 <div style={{ color: 'var(--gray-500)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
-                  Agregue las facturas a las que se aplicará este pago.
+                  Cargando facturas pendientes...
+                </div>
+              )}
+
+              {!invoicesLoading && allocations.length === 0 && (
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
+                  {pendingInvoices.length === 0
+                    ? 'No hay facturas con saldo pendiente.'
+                    : 'Agregue las facturas a las que se aplicará este pago.'}
                 </div>
               )}
 
@@ -276,7 +291,7 @@ export default function Payments() {
               <button type="submit" className="btn btn-primary" disabled={submitting}>
                 <DollarSign size={16} /> {submitting ? 'Registrando...' : 'Registrar Pago'}
               </button>
-              <button type="button" className="btn" onClick={() => { setShowForm(false); setShowList(true); setAllocations([]); setFormError(''); }}>
+              <button type="button" className="btn" onClick={() => { setShowForm(false); setAllocations([]); setFormError(''); }}>
                 Cancelar
               </button>
             </div>
@@ -284,17 +299,8 @@ export default function Payments() {
         </div>
       )}
 
-      {/* ── Toggle List ── */}
-      {showForm && (
-        <button className="btn btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => setShowList(!showList)}>
-          {showList ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {showList ? 'Ocultar' : 'Mostrar'} historial de pagos
-        </button>
-      )}
-
       {/* ── Filters ── */}
-      {showList && (
-        <>
-          <div className="card" style={{ marginBottom: '1rem' }}>
+      <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="form-row">
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <select value={filters.payment_method} onChange={(e) => setFilters({ ...filters, payment_method: e.target.value })}>
@@ -366,8 +372,6 @@ export default function Payments() {
               </tbody>
             </table>
           </div>
-        </>
-      )}
     </div>
   );
 }
