@@ -95,7 +95,8 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     doc.pipe(res);
 
     const fmtNum = (n) => parseFloat(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate = (d) => d ? fmtDateISO(d) : '';
+    // Dates already come formatted as DD/MM/YYYY from the service layer
+    const fmtDate = (d) => d || '';
     const pageW = 612 - 80; // LETTER width minus margins
     const leftCol = 40;
     const rightCol = 320;
