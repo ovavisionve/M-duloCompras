@@ -2,12 +2,6 @@ import React, { useState } from 'react';
 import { Download, Lock, CheckCircle } from 'lucide-react';
 import api, { downloadFile } from '../api';
 
-const fmtDate = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-};
-
 export default function PurchaseBook() {
   const now = new Date();
   const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
@@ -127,7 +121,7 @@ export default function PurchaseBook() {
                 {book.entries.map((e) => (
                   <tr key={e.operation_number}>
                     <td>{e.operation_number}</td>
-                    <td>{fmtDate(e.emission_date)}</td>
+                    <td>{e.emission_date}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>{e.supplier_rif}</td>
                     <td>{(e.supplier_name || '').substring(0, 30)}</td>
                     <td>{e.invoice_number}</td>
