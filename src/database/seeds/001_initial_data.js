@@ -55,28 +55,37 @@ exports.seed = async function (knex) {
     { name: 'Tecnología', code: 'TEC' },
   ]).returning('*');
 
-  // ─── WITHHOLDING RULES (Decreto 1808, Art. 9 / Providencia SNAT/2025/000054) ───
+  // ─── WITHHOLDING RULES (Decreto 1808, Art. 9 — Códigos oficiales SENIAT) ───
+  // Fuente: Manual técnico SENIAT N° 60.40.40.039, Versión 2.3, enero 2017
+  // Códigos: https://github.com/ks7000/seniat-islr/blob/master/seniat_codigo_concepto_retencion_islr.xml
   await knex('withholding_rules').insert([
-    // ISLR - Persona Natural Residente (sustraendo aplica, mínimo > 83.3334 UT)
-    { type: 'ISLR', concept_code: 'ISLR-N1-PN', concept_name: 'Honorarios profesionales (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N2-PN', concept_name: 'Comisiones mercantiles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N11-PN', concept_name: 'Servicios contratados (PN residente)', rate: 1.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N12-PN', concept_name: 'Alquiler inmuebles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N13-PN', concept_name: 'Alquiler bienes muebles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N15-PN', concept_name: 'Fletes nacionales (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-N19-PN', concept_name: 'Publicidad y propaganda (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
-    // ISLR - Persona Jurídica Domiciliada (sin sustraendo, sin mínimo)
-    { type: 'ISLR', concept_code: 'ISLR-N1-PJ', concept_name: 'Honorarios profesionales (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N2-PJ', concept_name: 'Comisiones mercantiles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N11-PJ', concept_name: 'Servicios contratados (PJ domiciliada)', rate: 2.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N12-PJ', concept_name: 'Alquiler inmuebles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N13-PJ', concept_name: 'Alquiler bienes muebles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N15-PJ', concept_name: 'Fletes nacionales (PJ domiciliada)', rate: 1.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N19-PJ', concept_name: 'Publicidad y propaganda (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-N3-PJ', concept_name: 'Intereses de capitales (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
-    // IVA (Providencia SNAT/2025/000054)
-    { type: 'IVA', concept_code: 'IVA-75', concept_name: 'Retención IVA 75% (general)', rate: 75.00, applies_to: 'ambos' },
-    { type: 'IVA', concept_code: 'IVA-100', concept_name: 'Retención IVA 100% (sin RIF / factura no cumple requisitos)', rate: 100.00, applies_to: 'ambos' },
+    // ── ISLR - Persona Natural Residente (PNR) ──
+    // Sustraendo 83.3334 UT (Parágrafo 8°, Art. 9, Decreto 1808)
+    // Mínimo sujeto a retención: 25 UT (excepto numerales 9, 11, 14, 20)
+    { type: 'ISLR', concept_code: '002', concept_name: 'Honorarios profesionales no mercantiles (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '012', concept_name: 'Honorarios profesionales pagados por clínicas, hospitales y similares (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '018', concept_name: 'Comisiones distintas a remuneraciones salariales (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '025', concept_name: 'Intereses pagados por PJ o comunidades (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '053', concept_name: 'Contratistas y subcontratistas - ejecución de obras o servicios (PNR)', rate: 1.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '057', concept_name: 'Arrendamiento de bienes inmuebles (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '061', concept_name: 'Arrendamiento de bienes muebles (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '071', concept_name: 'Fletes nacionales (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: '083', concept_name: 'Publicidad y propaganda (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+
+    // ── ISLR - Persona Jurídica Domiciliada (PJD) ──
+    // Sin sustraendo, pago mínimo sujeto: 25 UT (excepto numerales 9, 11, 14, 20)
+    { type: 'ISLR', concept_code: '004', concept_name: 'Honorarios profesionales no mercantiles (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '020', concept_name: 'Comisiones distintas a remuneraciones salariales (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '027', concept_name: 'Intereses pagados por PJ o comunidades (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '055', concept_name: 'Contratistas y subcontratistas - ejecución de obras o servicios (PJD)', rate: 2.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '059', concept_name: 'Arrendamiento de bienes inmuebles (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '063', concept_name: 'Arrendamiento de bienes muebles (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '072', concept_name: 'Fletes nacionales (PJD)', rate: 1.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: '084', concept_name: 'Publicidad y propaganda (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+
+    // ── IVA (Providencia SNAT/2025/000054, Art. 16) ──
+    { type: 'IVA', concept_code: 'IVA-75', concept_name: 'Retención IVA 75% (contribuyente ordinario)', rate: 75.00, applies_to: 'ambos' },
+    { type: 'IVA', concept_code: 'IVA-100', concept_name: 'Retención IVA 100% (sin RIF / factura incumple requisitos)', rate: 100.00, applies_to: 'ambos' },
   ]);
 
   // ─── BANK ACCOUNTS ───

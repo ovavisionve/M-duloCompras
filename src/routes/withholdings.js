@@ -33,20 +33,28 @@ router.get('/export', authenticate, async (req, res, next) => {
     const { period, type } = req.query;
     const result = await withholdingService.listWithholdings({ fiscal_period: period, type, status: 'activa', limit: 1000 });
 
-    // Generate SENIAT-compatible TXT
+    // Fetch concept codes for withholdings that have a linked rule
+    const db = require('../database/connection');
+    const ruleIds = [...new Set(result.data.filter((w) => w.withholding_rule_id).map((w) => w.withholding_rule_id))];
+    const rules = ruleIds.length ? await db('withholding_rules').whereIn('id', ruleIds) : [];
+    const ruleMap = Object.fromEntries(rules.map((r) => [r.id, r]));
+
+    // Generate SENIAT-compatible TXT (Art. 25, Decreto 1808)
     const lines = result.data.map((w) => {
+      const rule = ruleMap[w.withholding_rule_id];
       return [
         w.supplier_rif,
         w.fiscal_period.replace('/', ''),
         w.withholding_date,
         w.voucher_number,
+        rule ? rule.concept_code : '',
         w.base_amount,
         w.rate,
         w.amount_ves,
       ].join('\t');
     });
 
-    const header = 'RIF\tPeriodo\tFecha\tComprobante\tBase\tPorcentaje\tMonto';
+    const header = 'RIF\tPeriodo\tFecha\tComprobante\tConcepto\tBase\tPorcentaje\tMonto';
     const content = [header, ...lines].join('\n');
 
     res.setHeader('Content-Type', 'text/plain');
