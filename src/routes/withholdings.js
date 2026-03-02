@@ -3,6 +3,22 @@ const { authenticate, authorize } = require('../middleware/auth');
 const withholdingService = require('../services/withholdingService');
 const { paginate } = require('../utils/helpers');
 
+// GET /withholdings/rules
+router.get('/rules', authenticate, async (req, res, next) => {
+  try {
+    const db = require('../database/connection');
+    const query = db('withholding_rules').where({ is_active: true }).orderBy('type').orderBy('concept_code');
+    if (req.query.type) query.where('type', req.query.type);
+    if (req.query.applies_to) {
+      query.where(function () {
+        this.where('applies_to', req.query.applies_to).orWhere('applies_to', 'ambos');
+      });
+    }
+    const rules = await query;
+    res.json({ success: true, data: rules });
+  } catch (err) { next(err); }
+});
+
 // GET /withholdings
 router.get('/', authenticate, async (req, res, next) => {
   try {

@@ -7,13 +7,15 @@ const invoiceService = require('./invoiceService');
 
 /**
  * Generate next correlative voucher number
+ * SENIAT format: AAAAMMSSSSSSSS (14 chars) but we use YYYY-TYPE-XXXXXXXX for readability
  */
 async function getNextVoucherNumber(type) {
   const key = type === 'ISLR' ? 'withholding_counter_islr' : 'withholding_counter_iva';
   const config = await db('config').where({ key }).first();
   const counter = parseInt(config?.value || '0') + 1;
   await db('config').where({ key }).update({ value: String(counter) });
-  return generateVoucherNumber(new Date().getFullYear(), counter);
+  const year = new Date().getFullYear();
+  return `${year}-${type}-${String(counter).padStart(8, '0')}`;
 }
 
 /**

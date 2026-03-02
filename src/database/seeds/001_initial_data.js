@@ -55,16 +55,28 @@ exports.seed = async function (knex) {
     { name: 'Tecnología', code: 'TEC' },
   ]).returning('*');
 
-  // ─── WITHHOLDING RULES ───
+  // ─── WITHHOLDING RULES (Decreto 1808, Art. 9 / Providencia SNAT/2025/000054) ───
   await knex('withholding_rules').insert([
-    { type: 'ISLR', concept_code: 'ISLR-SP-PN', concept_name: 'Servicios profesionales (persona natural)', rate: 2.00, subtract_ut: 0, applies_to: 'natural' },
-    { type: 'ISLR', concept_code: 'ISLR-SP-PJ', concept_name: 'Servicios profesionales (persona jurídica)', rate: 2.00, subtract_ut: 0, applies_to: 'juridica' },
-    { type: 'ISLR', concept_code: 'ISLR-ALQ', concept_name: 'Alquileres de inmuebles', rate: 3.00, subtract_ut: 0, applies_to: 'ambos' },
-    { type: 'ISLR', concept_code: 'ISLR-COM', concept_name: 'Comisiones mercantiles', rate: 3.00, subtract_ut: 0, applies_to: 'ambos' },
-    { type: 'ISLR', concept_code: 'ISLR-PUB', concept_name: 'Publicidad y propaganda', rate: 1.00, subtract_ut: 0, applies_to: 'ambos' },
-    { type: 'ISLR', concept_code: 'ISLR-TRA', concept_name: 'Transporte (fletes)', rate: 1.00, subtract_ut: 0, applies_to: 'ambos' },
-    { type: 'IVA', concept_code: 'IVA-75', concept_name: 'Retención IVA 75%', rate: 75.00, applies_to: 'ambos' },
-    { type: 'IVA', concept_code: 'IVA-100', concept_name: 'Retención IVA 100%', rate: 100.00, applies_to: 'ambos' },
+    // ISLR - Persona Natural Residente (sustraendo aplica, mínimo > 83.3334 UT)
+    { type: 'ISLR', concept_code: 'ISLR-N1-PN', concept_name: 'Honorarios profesionales (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N2-PN', concept_name: 'Comisiones mercantiles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N11-PN', concept_name: 'Servicios contratados (PN residente)', rate: 1.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N12-PN', concept_name: 'Alquiler inmuebles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N13-PN', concept_name: 'Alquiler bienes muebles (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N15-PN', concept_name: 'Fletes nacionales (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    { type: 'ISLR', concept_code: 'ISLR-N19-PN', concept_name: 'Publicidad y propaganda (PN residente)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
+    // ISLR - Persona Jurídica Domiciliada (sin sustraendo, sin mínimo)
+    { type: 'ISLR', concept_code: 'ISLR-N1-PJ', concept_name: 'Honorarios profesionales (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N2-PJ', concept_name: 'Comisiones mercantiles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N11-PJ', concept_name: 'Servicios contratados (PJ domiciliada)', rate: 2.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N12-PJ', concept_name: 'Alquiler inmuebles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N13-PJ', concept_name: 'Alquiler bienes muebles (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N15-PJ', concept_name: 'Fletes nacionales (PJ domiciliada)', rate: 1.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N19-PJ', concept_name: 'Publicidad y propaganda (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    { type: 'ISLR', concept_code: 'ISLR-N3-PJ', concept_name: 'Intereses de capitales (PJ domiciliada)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
+    // IVA (Providencia SNAT/2025/000054)
+    { type: 'IVA', concept_code: 'IVA-75', concept_name: 'Retención IVA 75% (general)', rate: 75.00, applies_to: 'ambos' },
+    { type: 'IVA', concept_code: 'IVA-100', concept_name: 'Retención IVA 100% (sin RIF / factura no cumple requisitos)', rate: 100.00, applies_to: 'ambos' },
   ]);
 
   // ─── BANK ACCOUNTS ───
