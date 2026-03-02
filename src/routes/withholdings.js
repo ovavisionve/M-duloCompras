@@ -67,39 +67,297 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.get('/:id/pdf', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
+    const { fmtDateISO } = require('../utils/helpers');
     const withholding = await withholdingService.getWithholdingById(req.params.id);
     const db = require('../database/connection');
     const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
     const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
+    const companyAddress = (await db('config').where({ key: 'company_address' }).first())?.value || '';
 
-    const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+    // Fetch withholding rule details if available
+    let ruleName = '';
+    if (withholding.withholding_rule_id) {
+      const rule = await db('withholding_rules').where({ id: withholding.withholding_rule_id }).first();
+      if (rule) ruleName = rule.concept_name;
+    }
+
+    const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=retencion_${withholding.voucher_number}.pdf`);
     doc.pipe(res);
 
-    doc.fontSize(16).text('COMPROBANTE DE RETENCIÓN', { align: 'center' });
-    doc.fontSize(10).text(`Tipo: ${withholding.type}`, { align: 'center' });
-    doc.moveDown();
-    doc.text(`Nº Comprobante: ${withholding.voucher_number}`);
-    doc.text(`Fecha: ${withholding.withholding_date}`);
-    doc.text(`Período Fiscal: ${withholding.fiscal_period}`);
-    doc.moveDown();
-    doc.text(`Agente de Retención: ${companyName} - ${companyRif}`);
-    doc.text(`Sujeto Retenido: ${withholding.supplier_name} - ${withholding.supplier_rif}`);
-    doc.moveDown();
-    doc.text(`Base Imponible: ${withholding.base_amount}`);
-    doc.text(`Porcentaje: ${withholding.rate}%`);
-    doc.text(`Monto Retenido (VES): ${withholding.amount_ves}`);
-    doc.text(`Monto Retenido (USD): ${withholding.amount_usd}`);
-    doc.text(`Tasa BCV: ${withholding.exchange_rate}`);
-    doc.moveDown();
+    const fmtNum = (n) => parseFloat(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtDate = (d) => d ? fmtDateISO(d) : '';
+    const pageW = 612 - 80; // LETTER width minus margins
+    const leftCol = 40;
+    const rightCol = 320;
 
-    if (withholding.invoices?.length) {
-      doc.text('Facturas Asociadas:', { underline: true });
-      for (const inv of withholding.invoices) {
-        doc.text(`  - Factura ${inv.invoice_number} | Base: ${inv.base_amount} | Retenido: ${inv.withheld_amount}`);
-      }
+    // ═══════════════════════════════════════════════════
+    // HEADER - Title and voucher number
+    // ═══════════════════════════════════════════════════
+    const isIVA = withholding.type === 'IVA';
+    const title = isIVA ? 'COMPROBANTE DE RETENCIÓN DE IVA' : 'COMPROBANTE DE RETENCIÓN DE ISLR';
+
+    doc.rect(leftCol, doc.y, pageW, 28).fill('#1a365d');
+    doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold')
+      .text(title, leftCol, doc.y - 26, { width: pageW, align: 'center' });
+    doc.fillColor('#000000');
+    doc.moveDown(0.8);
+
+    // Voucher number and period - right aligned
+    const headerY = doc.y;
+    doc.fontSize(9).font('Helvetica-Bold').text('Nº Comprobante:', leftCol, headerY);
+    doc.font('Helvetica').text(withholding.voucher_number, leftCol + 100, headerY);
+    doc.font('Helvetica-Bold').text('Fecha de Emisión:', rightCol, headerY);
+    doc.font('Helvetica').text(fmtDate(withholding.withholding_date), rightCol + 105, headerY);
+
+    const headerY2 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('Período Fiscal:', leftCol, headerY2);
+    doc.font('Helvetica').text(withholding.fiscal_period, leftCol + 100, headerY2);
+    doc.moveDown(1.2);
+
+    // ═══════════════════════════════════════════════════
+    // AGENTE DE RETENCIÓN (Company / Buyer)
+    // ═══════════════════════════════════════════════════
+    const agentBoxY = doc.y;
+    doc.rect(leftCol, agentBoxY, pageW, 16).fill('#e2e8f0');
+    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+      .text('AGENTE DE RETENCIÓN', leftCol + 5, agentBoxY + 3, { width: pageW });
+    doc.fillColor('#000000');
+    doc.y = agentBoxY + 20;
+
+    doc.fontSize(8.5).font('Helvetica-Bold').text('Razón Social:', leftCol + 5, doc.y);
+    doc.font('Helvetica').text(companyName, leftCol + 75, doc.y);
+    const agLine2 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('RIF:', leftCol + 5, agLine2);
+    doc.font('Helvetica').text(companyRif, leftCol + 75, agLine2);
+    doc.font('Helvetica-Bold').text('Dirección Fiscal:', rightCol, agLine2);
+    doc.font('Helvetica').text(companyAddress, rightCol + 90, agLine2, { width: 160 });
+    doc.moveDown(1);
+
+    // ═══════════════════════════════════════════════════
+    // SUJETO RETENIDO (Supplier)
+    // ═══════════════════════════════════════════════════
+    const provBoxY = doc.y;
+    doc.rect(leftCol, provBoxY, pageW, 16).fill('#e2e8f0');
+    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+      .text('SUJETO RETENIDO', leftCol + 5, provBoxY + 3, { width: pageW });
+    doc.fillColor('#000000');
+    doc.y = provBoxY + 20;
+
+    doc.fontSize(8.5).font('Helvetica-Bold').text('Razón Social:', leftCol + 5, doc.y);
+    doc.font('Helvetica').text(withholding.supplier_name, leftCol + 75, doc.y);
+    const prLine2 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('RIF:', leftCol + 5, prLine2);
+    doc.font('Helvetica').text(withholding.supplier_rif, leftCol + 75, prLine2);
+    if (withholding.supplier_address) {
+      doc.font('Helvetica-Bold').text('Dirección Fiscal:', rightCol, prLine2);
+      doc.font('Helvetica').text(withholding.supplier_address, rightCol + 90, prLine2, { width: 160 });
     }
+    doc.moveDown(1.5);
+
+    // ═══════════════════════════════════════════════════
+    // INVOICE TABLE (Art. 16 PA SNAT/2015/0049)
+    // ═══════════════════════════════════════════════════
+    if (isIVA) {
+      // IVA Comprobante table columns per Art. 16:
+      // Fecha, Nº Factura, Nº Control, Total Factura, Base Imponible, % IVA, IVA Facturado, IVA Retenido
+      const cols = [
+        { header: 'Fecha', width: 55, align: 'left' },
+        { header: 'Nº Factura', width: 65, align: 'left' },
+        { header: 'Nº Control', width: 65, align: 'left' },
+        { header: 'Total Fact.', width: 70, align: 'right' },
+        { header: 'Base Imp.', width: 70, align: 'right' },
+        { header: '% IVA', width: 38, align: 'right' },
+        { header: 'IVA Fact.', width: 65, align: 'right' },
+        { header: 'IVA Retenido', width: 70, align: 'right' },
+      ];
+
+      // Table header
+      let tableX = leftCol;
+      const tableHeaderY = doc.y;
+      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#2d3748');
+      doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+      for (const col of cols) {
+        doc.text(col.header, tableX + 2, tableHeaderY + 4, { width: col.width - 4, align: col.align });
+        tableX += col.width;
+      }
+      doc.fillColor('#000000');
+      doc.y = tableHeaderY + 18;
+
+      // Table rows
+      doc.font('Helvetica').fontSize(7.5);
+      let totalFacturado = 0;
+      let totalBase = 0;
+      let totalIvaFact = 0;
+      let totalRetenido = 0;
+
+      for (let i = 0; i < (withholding.invoices || []).length; i++) {
+        const inv = withholding.invoices[i];
+        const rowY = doc.y;
+        if (i % 2 === 0) doc.rect(leftCol, rowY, pageW, 14).fill('#f7fafc');
+        doc.fillColor('#000000');
+        tableX = leftCol;
+
+        const rowData = [
+          { val: fmtDate(inv.emission_date), align: 'left' },
+          { val: inv.invoice_number || '', align: 'left' },
+          { val: inv.control_number || 'N/A', align: 'left' },
+          { val: fmtNum(inv.total_amount), align: 'right' },
+          { val: fmtNum(inv.base_amount), align: 'right' },
+          { val: `${parseFloat(inv.vat_rate || 16).toFixed(0)}%`, align: 'right' },
+          { val: fmtNum(inv.vat_amount), align: 'right' },
+          { val: fmtNum(inv.withheld_amount), align: 'right' },
+        ];
+
+        totalFacturado += parseFloat(inv.total_amount || 0);
+        totalBase += parseFloat(inv.base_amount || 0);
+        totalIvaFact += parseFloat(inv.vat_amount || 0);
+        totalRetenido += parseFloat(inv.withheld_amount || 0);
+
+        for (let j = 0; j < cols.length; j++) {
+          doc.text(rowData[j].val, tableX + 2, rowY + 3, { width: cols[j].width - 4, align: rowData[j].align });
+          tableX += cols[j].width;
+        }
+        doc.y = rowY + 15;
+      }
+
+      // Totals row
+      const totY = doc.y;
+      doc.rect(leftCol, totY, pageW, 16).fill('#2d3748');
+      doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
+      tableX = leftCol;
+      const totals = ['', '', 'TOTALES:', fmtNum(totalFacturado), fmtNum(totalBase), '', fmtNum(totalIvaFact), fmtNum(totalRetenido)];
+      for (let j = 0; j < cols.length; j++) {
+        doc.text(totals[j], tableX + 2, totY + 4, { width: cols[j].width - 4, align: cols[j].align || 'right' });
+        tableX += cols[j].width;
+      }
+      doc.fillColor('#000000');
+      doc.y = totY + 20;
+    } else {
+      // ISLR Comprobante table
+      // Columns: Fecha, Nº Factura, Concepto, Base Sujeta, % Retención, Sustraendo, Monto Retenido
+      const cols = [
+        { header: 'Fecha', width: 55, align: 'left' },
+        { header: 'Nº Factura', width: 70, align: 'left' },
+        { header: 'Concepto', width: 120, align: 'left' },
+        { header: 'Base Sujeta', width: 75, align: 'right' },
+        { header: '% Ret.', width: 42, align: 'right' },
+        { header: 'Sustraendo', width: 65, align: 'right' },
+        { header: 'Monto Retenido', width: 75, align: 'right' },
+      ];
+
+      let tableX = leftCol;
+      const tableHeaderY = doc.y;
+      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#2d3748');
+      doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+      for (const col of cols) {
+        doc.text(col.header, tableX + 2, tableHeaderY + 4, { width: col.width - 4, align: col.align });
+        tableX += col.width;
+      }
+      doc.fillColor('#000000');
+      doc.y = tableHeaderY + 18;
+
+      doc.font('Helvetica').fontSize(7.5);
+      let totalBase = 0;
+      let totalRetenido = 0;
+
+      for (let i = 0; i < (withholding.invoices || []).length; i++) {
+        const inv = withholding.invoices[i];
+        const rowY = doc.y;
+        if (i % 2 === 0) doc.rect(leftCol, rowY, pageW, 14).fill('#f7fafc');
+        doc.fillColor('#000000');
+        tableX = leftCol;
+
+        const sustraendo = 0; // Could be calculated from UT value × subtract_ut
+        const rowData = [
+          { val: fmtDate(inv.emission_date), align: 'left' },
+          { val: inv.invoice_number || '', align: 'left' },
+          { val: ruleName || 'ISLR', align: 'left' },
+          { val: fmtNum(inv.base_amount), align: 'right' },
+          { val: `${parseFloat(withholding.rate).toFixed(2)}%`, align: 'right' },
+          { val: fmtNum(sustraendo), align: 'right' },
+          { val: fmtNum(inv.withheld_amount), align: 'right' },
+        ];
+
+        totalBase += parseFloat(inv.base_amount || 0);
+        totalRetenido += parseFloat(inv.withheld_amount || 0);
+
+        for (let j = 0; j < cols.length; j++) {
+          doc.text(rowData[j].val, tableX + 2, rowY + 3, { width: cols[j].width - 4, align: rowData[j].align });
+          tableX += cols[j].width;
+        }
+        doc.y = rowY + 15;
+      }
+
+      const totY = doc.y;
+      doc.rect(leftCol, totY, pageW, 16).fill('#2d3748');
+      doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
+      tableX = leftCol;
+      const totals = ['', '', 'TOTALES:', fmtNum(totalBase), '', '', fmtNum(totalRetenido)];
+      for (let j = 0; j < cols.length; j++) {
+        doc.text(totals[j], tableX + 2, totY + 4, { width: cols[j].width - 4, align: cols[j].align || 'right' });
+        tableX += cols[j].width;
+      }
+      doc.fillColor('#000000');
+      doc.y = totY + 20;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // SUMMARY SECTION
+    // ═══════════════════════════════════════════════════
+    doc.moveDown(0.8);
+    const sumY = doc.y;
+    doc.rect(leftCol, sumY, pageW, 16).fill('#e2e8f0');
+    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+      .text('RESUMEN', leftCol + 5, sumY + 3, { width: pageW });
+    doc.fillColor('#000000');
+    doc.y = sumY + 20;
+
+    doc.fontSize(9).font('Helvetica');
+    const summaryLeft = leftCol + 10;
+    const summaryValX = summaryLeft + 180;
+
+    doc.font('Helvetica-Bold').text('Base Imponible Total:', summaryLeft, doc.y);
+    doc.font('Helvetica').text(`Bs. ${fmtNum(withholding.base_amount)}`, summaryValX, doc.y);
+    const sl2 = doc.y + 2;
+    doc.font('Helvetica-Bold').text(`Porcentaje de Retención:`, summaryLeft, sl2);
+    doc.font('Helvetica').text(`${parseFloat(withholding.rate).toFixed(2)}%`, summaryValX, sl2);
+    const sl3 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('Total Retenido (Bs.):', summaryLeft, sl3);
+    doc.font('Helvetica-Bold').fontSize(11).text(`Bs. ${fmtNum(withholding.amount_ves)}`, summaryValX, sl3);
+    doc.fontSize(9).font('Helvetica');
+    const sl4 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('Equivalente en USD:', summaryLeft, sl4);
+    doc.font('Helvetica').text(`$ ${fmtNum(withholding.amount_usd)}`, summaryValX, sl4);
+    const sl5 = doc.y + 2;
+    doc.font('Helvetica-Bold').text('Tasa de Cambio BCV:', summaryLeft, sl5);
+    doc.font('Helvetica').text(`Bs. ${parseFloat(withholding.exchange_rate).toFixed(4)} / USD`, summaryValX, sl5);
+
+    // ═══════════════════════════════════════════════════
+    // FOOTER - Legal basis and signatures
+    // ═══════════════════════════════════════════════════
+    doc.moveDown(2);
+    doc.fontSize(7).fillColor('#718096');
+    if (isIVA) {
+      doc.text('Comprobante emitido conforme al Art. 16 de la Providencia Administrativa SNAT/2025/000054 (G.O. 43.171 del 16/07/2025).', leftCol, doc.y, { width: pageW, align: 'center' });
+    } else {
+      doc.text('Comprobante emitido conforme al Art. 24 del Decreto 1808 (Reglamento Parcial de Retenciones de ISLR, G.O. 36.203 del 12/05/1997).', leftCol, doc.y, { width: pageW, align: 'center' });
+    }
+    doc.fillColor('#000000');
+
+    // Signature lines
+    doc.moveDown(3);
+    const sigY = doc.y;
+    const sigWidth = 180;
+    doc.moveTo(leftCol + 20, sigY).lineTo(leftCol + 20 + sigWidth, sigY).stroke();
+    doc.moveTo(rightCol + 20, sigY).lineTo(rightCol + 20 + sigWidth, sigY).stroke();
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Agente de Retención', leftCol + 20, sigY + 4, { width: sigWidth, align: 'center' });
+    doc.text('Sujeto Retenido', rightCol + 20, sigY + 4, { width: sigWidth, align: 'center' });
+    doc.fontSize(7).fillColor('#718096');
+    doc.text('(Firma y Sello)', leftCol + 20, sigY + 16, { width: sigWidth, align: 'center' });
+    doc.text('(Recibido Conforme)', rightCol + 20, sigY + 16, { width: sigWidth, align: 'center' });
 
     doc.end();
   } catch (err) { next(err); }

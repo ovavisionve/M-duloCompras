@@ -28,50 +28,138 @@ router.get('/pdf', authenticate, async (req, res, next) => {
     const db = require('../database/connection');
     const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
     const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const companyAddress = (await db('config').where({ key: 'company_address' }).first())?.value || '';
 
-    const doc = new PDFDocument({ size: 'LEGAL', layout: 'landscape', margin: 30 });
+    const doc = new PDFDocument({ size: 'LEGAL', layout: 'landscape', margin: 25 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=libro_compras_${req.query.period.replace('/', '-')}.pdf`);
     doc.pipe(res);
 
-    doc.fontSize(14).text('LIBRO DE COMPRAS', { align: 'center' });
-    doc.fontSize(10).text(`${companyName} - ${companyRif}`, { align: 'center' });
-    doc.text(`Período: ${req.query.period}`, { align: 'center' });
-    doc.moveDown();
+    const fmtNum = (n) => parseFloat(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pageW = 1008 - 50; // LEGAL landscape width minus margins
+    const leftM = 25;
 
-    // Table header
-    const headers = ['Nº', 'Fecha', 'RIF', 'Proveedor', 'Nº Factura', 'Nº Control', 'Tipo', 'Base Imp.', 'Exento', 'IVA', 'IVA Ret.'];
-    const colWidths = [30, 65, 85, 150, 65, 65, 35, 70, 60, 60, 55];
-    let x = 30;
-    doc.fontSize(7).font('Helvetica-Bold');
-    headers.forEach((h, i) => { doc.text(h, x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
-    doc.moveDown(0.5);
-    doc.font('Helvetica').fontSize(6);
+    // ═══════════════════════════════════════════════════
+    // Helper to draw page header (repeats on each page)
+    // ═══════════════════════════════════════════════════
+    const headers = ['Nº', 'Fecha', 'RIF Proveedor', 'Razón Social', 'Nº Factura', 'Nº Control', 'Tipo', 'Base Imponible', 'Exento/Exonerado', 'IVA (Crédito Fiscal)', 'IVA Retenido', 'Nº Comp. Ret.'];
+    const colWidths = [28, 55, 80, 135, 65, 65, 30, 78, 72, 72, 62, 80];
+    const colAligns = ['center', 'left', 'left', 'left', 'left', 'left', 'center', 'right', 'right', 'right', 'right', 'left'];
 
-    for (const entry of book.entries) {
-      x = 30;
-      const y = doc.y;
-      if (y > 550) { doc.addPage(); }
-      const row = [
-        entry.operation_number,
-        entry.emission_date,
-        entry.supplier_rif,
-        (entry.supplier_name || '').substring(0, 30),
-        entry.invoice_number,
-        entry.control_number || '',
-        entry.document_type,
-        entry.taxable_purchases?.toFixed(2),
-        entry.exempt_purchases?.toFixed(2),
-        entry.vat_amount?.toFixed(2),
-        entry.iva_withheld?.toFixed(2),
-      ];
-      row.forEach((val, i) => { doc.text(String(val || ''), x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
+    function drawPageHeader() {
+      // Company header
+      doc.rect(leftM, doc.y, pageW, 40).fill('#1a365d');
+      const titleY = doc.y;
+      doc.fillColor('#ffffff').fontSize(12).font('Helvetica-Bold')
+        .text('LIBRO DE COMPRAS', leftM, titleY + 3, { width: pageW, align: 'center' });
+      doc.fontSize(8).font('Helvetica')
+        .text(`${companyName}  |  RIF: ${companyRif}  |  ${companyAddress}`, leftM, titleY + 18, { width: pageW, align: 'center' });
+      doc.fontSize(8)
+        .text(`Período Fiscal: ${req.query.period}`, leftM, titleY + 28, { width: pageW, align: 'center' });
+      doc.fillColor('#000000');
+      doc.y = titleY + 44;
+
+      // Art. 75 RLIVA reference
+      doc.fontSize(6).fillColor('#718096')
+        .text('Conforme al Artículo 75 del Reglamento de la Ley de Impuesto al Valor Agregado', leftM, doc.y, { width: pageW, align: 'right' });
+      doc.fillColor('#000000');
       doc.moveDown(0.3);
+
+      // Column headers
+      const headerY = doc.y;
+      doc.rect(leftM, headerY, pageW, 18).fill('#2d3748');
+      doc.fillColor('#ffffff').fontSize(6).font('Helvetica-Bold');
+      let x = leftM;
+      for (let i = 0; i < headers.length; i++) {
+        doc.text(headers[i], x + 2, headerY + 3, { width: colWidths[i] - 4, align: 'center' });
+        x += colWidths[i];
+      }
+      doc.fillColor('#000000');
+      doc.y = headerY + 20;
     }
 
-    doc.moveDown();
-    doc.font('Helvetica-Bold').fontSize(8);
-    doc.text(`TOTALES: Base Imponible: ${book.totals.total_taxable.toFixed(2)} | Exento: ${book.totals.total_exempt.toFixed(2)} | IVA: ${book.totals.total_vat.toFixed(2)} | IVA Retenido: ${book.totals.total_iva_withheld.toFixed(2)} | TOTAL: ${book.totals.grand_total.toFixed(2)}`);
+    drawPageHeader();
+
+    // ═══════════════════════════════════════════════════
+    // TABLE DATA ROWS
+    // ═══════════════════════════════════════════════════
+    doc.font('Helvetica').fontSize(6.5);
+    for (let idx = 0; idx < book.entries.length; idx++) {
+      const entry = book.entries[idx];
+      if (doc.y > 540) {
+        doc.addPage();
+        drawPageHeader();
+        doc.font('Helvetica').fontSize(6.5);
+      }
+
+      const rowY = doc.y;
+      if (idx % 2 === 0) doc.rect(leftM, rowY, pageW, 13).fill('#f7fafc');
+      doc.fillColor('#000000');
+      let x = leftM;
+
+      const row = [
+        String(entry.operation_number),
+        entry.emission_date,
+        entry.supplier_rif,
+        (entry.supplier_name || '').substring(0, 28),
+        entry.invoice_number,
+        entry.control_number || '-',
+        entry.document_type,
+        fmtNum(entry.taxable_purchases),
+        fmtNum(entry.exempt_purchases),
+        fmtNum(entry.vat_amount),
+        fmtNum(entry.iva_withheld),
+        entry.withholding_voucher || '',
+      ];
+
+      for (let i = 0; i < row.length; i++) {
+        doc.text(row[i], x + 2, rowY + 3, { width: colWidths[i] - 4, align: colAligns[i] });
+        x += colWidths[i];
+      }
+      doc.y = rowY + 14;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // TOTALS ROW (Art. 72 RLIVA - resumen del período)
+    // ═══════════════════════════════════════════════════
+    if (doc.y > 540) {
+      doc.addPage();
+      drawPageHeader();
+    }
+
+    doc.moveDown(0.3);
+    const totY = doc.y;
+    doc.rect(leftM, totY, pageW, 16).fill('#2d3748');
+    doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+
+    let x = leftM;
+    // Fill empty columns up to "Tipo"
+    for (let i = 0; i < 6; i++) { x += colWidths[i]; }
+    doc.text('TOTALES:', x + 2, totY + 4, { width: colWidths[6] - 4, align: 'center' });
+    x += colWidths[6];
+    doc.text(fmtNum(book.totals.total_taxable), x + 2, totY + 4, { width: colWidths[7] - 4, align: 'right' });
+    x += colWidths[7];
+    doc.text(fmtNum(book.totals.total_exempt), x + 2, totY + 4, { width: colWidths[8] - 4, align: 'right' });
+    x += colWidths[8];
+    doc.text(fmtNum(book.totals.total_vat), x + 2, totY + 4, { width: colWidths[9] - 4, align: 'right' });
+    x += colWidths[9];
+    doc.text(fmtNum(book.totals.total_iva_withheld), x + 2, totY + 4, { width: colWidths[10] - 4, align: 'right' });
+
+    doc.fillColor('#000000');
+    doc.y = totY + 20;
+
+    // Grand total summary
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(9);
+    doc.text(`TOTAL GENERAL DEL PERÍODO: Bs. ${fmtNum(book.totals.grand_total)}`, leftM, doc.y, { width: pageW, align: 'right' });
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(7);
+    doc.text(`${book.entry_count} operación(es) registrada(s) en el período ${req.query.period}`, leftM, doc.y, { width: pageW, align: 'right' });
+
+    // Footer
+    doc.moveDown(1.5);
+    doc.fontSize(6).fillColor('#718096');
+    doc.text(`Generado el ${new Date().toLocaleDateString('es-VE')} | ${companyName} | RIF: ${companyRif}`, leftM, doc.y, { width: pageW, align: 'center' });
 
     doc.end();
   } catch (err) { next(err); }

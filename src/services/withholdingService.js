@@ -1,5 +1,5 @@
 const db = require('../database/connection');
-const { round2, generateVoucherNumber } = require('../utils/helpers');
+const { round2, generateVoucherNumber, fmtDateISO } = require('../utils/helpers');
 const { AppError } = require('../middleware/errorHandler');
 const auditService = require('./auditService');
 const webhookService = require('./webhookService');
@@ -139,6 +139,11 @@ async function listWithholdings(filters = {}) {
   const [{ count }] = await query.clone().clearSelect().count();
   const data = await query.orderBy('withholdings.withholding_date', 'desc').limit(limit).offset((page - 1) * limit);
 
+  // Format dates for consistent DD/MM/YYYY output
+  for (const w of data) {
+    w.withholding_date = fmtDateISO(w.withholding_date);
+  }
+
   return { data, total: parseInt(count), page, limit };
 }
 
@@ -148,17 +153,28 @@ async function listWithholdings(filters = {}) {
 async function getWithholdingById(id) {
   const withholding = await db('withholdings')
     .join('suppliers', 'withholdings.supplier_id', 'suppliers.id')
-    .select('withholdings.*', 'suppliers.rif as supplier_rif', 'suppliers.business_name as supplier_name')
+    .select('withholdings.*', 'suppliers.rif as supplier_rif', 'suppliers.business_name as supplier_name',
+      'suppliers.fiscal_address as supplier_address')
     .where('withholdings.id', id)
     .first();
 
   if (!withholding) throw new AppError('Retención no encontrada', 404, 'NOT_FOUND');
 
+  // Format dates for consistent DD/MM/YYYY output
+  withholding.withholding_date = fmtDateISO(withholding.withholding_date);
+
   withholding.invoices = await db('withholding_invoices')
     .join('invoices', 'withholding_invoices.invoice_id', 'invoices.id')
     .where('withholding_invoices.withholding_id', id)
-    .select('invoices.invoice_number', 'invoices.emission_date', 'invoices.total_amount',
+    .select('invoices.invoice_number', 'invoices.control_number', 'invoices.emission_date',
+      'invoices.total_amount', 'invoices.taxable_amount', 'invoices.exempt_amount',
+      'invoices.vat_rate', 'invoices.vat_amount', 'invoices.document_type',
       'withholding_invoices.*');
+
+  // Format invoice dates
+  for (const inv of withholding.invoices) {
+    inv.emission_date = fmtDateISO(inv.emission_date);
+  }
 
   return withholding;
 }
