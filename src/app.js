@@ -26,7 +26,11 @@ app.use('/api/', apiRateLimiter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Swagger docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Comprar-IA API Docs',
+}));
+app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
 // API Routes
 app.use('/api/v1/auth', require('./routes/auth'));

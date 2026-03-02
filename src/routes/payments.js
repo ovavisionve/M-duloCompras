@@ -4,6 +4,65 @@ const upload = require('../middleware/upload');
 const paymentService = require('../services/paymentService');
 const { paginate } = require('../utils/helpers');
 
+/**
+ * @swagger
+ * /payments:
+ *   get:
+ *     summary: Listar pagos
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Cantidad de resultados por página
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [activo, anulado]
+ *         description: Filtrar por estado
+ *       - in: query
+ *         name: payment_method
+ *         schema:
+ *           type: string
+ *         description: Filtrar por método de pago
+ *       - in: query
+ *         name: currency
+ *         schema:
+ *           type: string
+ *           enum: [VES, USD]
+ *         description: Filtrar por moneda
+ *     responses:
+ *       200:
+ *         description: Lista de pagos paginada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Payment'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         description: No autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /payments
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -12,6 +71,51 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /payments/summary:
+ *   get:
+ *     summary: Resumen de pagos por período
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Período en formato MM-YYYY
+ *     responses:
+ *       200:
+ *         description: Resumen de pagos del período
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     period:
+ *                       type: string
+ *                     total_payments:
+ *                       type: integer
+ *                     total_ves:
+ *                       type: number
+ *                     total_usd:
+ *                       type: number
+ *                     total_exchange_diff:
+ *                       type: number
+ *       401:
+ *         description: No autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /payments/summary
 router.get('/summary', authenticate, async (req, res, next) => {
   try {
@@ -36,6 +140,41 @@ router.get('/summary', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /payments/{id}:
+ *   get:
+ *     summary: Obtener pago por ID
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID del pago
+ *     responses:
+ *       200:
+ *         description: Detalle del pago
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Payment'
+ *       404:
+ *         description: Pago no encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /payments/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -44,6 +183,37 @@ router.get('/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /payments/{id}/receipt:
+ *   get:
+ *     summary: Descargar recibo de pago en PDF
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID del pago
+ *     responses:
+ *       200:
+ *         description: Archivo PDF del recibo de pago
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Pago no encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /payments/:id/receipt (PDF)
 router.get('/:id/receipt', authenticate, async (req, res, next) => {
   try {
@@ -86,6 +256,45 @@ router.get('/:id/receipt', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /payments:
+ *   post:
+ *     summary: Registrar un nuevo pago
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PaymentInput'
+ *     responses:
+ *       201:
+ *         description: Pago creado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Payment'
+ *       400:
+ *         description: Datos inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado (requiere rol admin, contador o tesorero)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /payments
 router.post('/', authenticate, authorize('admin', 'contador', 'tesorero'), async (req, res, next) => {
   try {
@@ -94,6 +303,59 @@ router.post('/', authenticate, authorize('admin', 'contador', 'tesorero'), async
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /payments/{id}/void:
+ *   post:
+ *     summary: Anular un pago
+ *     tags: [Pagos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID del pago a anular
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Motivo de la anulación
+ *     responses:
+ *       200:
+ *         description: Pago anulado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Payment'
+ *       403:
+ *         description: No autorizado (requiere rol admin o tesorero)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Pago no encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /payments/:id/void
 router.post('/:id/void', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {

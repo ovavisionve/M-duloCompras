@@ -3,6 +3,47 @@ const { authenticate, authorize } = require('../middleware/auth');
 const withholdingService = require('../services/withholdingService');
 const { paginate } = require('../utils/helpers');
 
+/**
+ * @swagger
+ * /withholdings/rules:
+ *   get:
+ *     summary: Listar reglas de retención activas
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [IVA, ISLR]
+ *         description: Filtrar por tipo de retención
+ *       - in: query
+ *         name: applies_to
+ *         schema:
+ *           type: string
+ *         description: Filtrar por aplicabilidad (especial, ordinario, ambos)
+ *     responses:
+ *       200:
+ *         description: Lista de reglas de retención activas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/WithholdingRule'
+ *       401:
+ *         description: No autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /withholdings/rules
 router.get('/rules', authenticate, async (req, res, next) => {
   try {
@@ -19,6 +60,70 @@ router.get('/rules', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings:
+ *   get:
+ *     summary: Listar retenciones
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Cantidad de resultados por página
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [IVA, ISLR]
+ *         description: Filtrar por tipo de retención
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [activa, anulada]
+ *         description: Filtrar por estado
+ *       - in: query
+ *         name: fiscal_period
+ *         schema:
+ *           type: string
+ *         description: Filtrar por período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: string
+ *         description: Filtrar por proveedor
+ *     responses:
+ *       200:
+ *         description: Lista de retenciones paginada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Withholding'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         description: No autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /withholdings
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -27,6 +132,43 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings/export:
+ *   get:
+ *     summary: Exportar retenciones en TXT para SENIAT
+ *     description: Genera archivo TXT compatible con SENIAT (Art. 25, Decreto 1808) para el período y tipo indicados.
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: type
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [IVA, ISLR]
+ *         description: Tipo de retención
+ *     responses:
+ *       200:
+ *         description: Archivo TXT con datos de retenciones
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *       401:
+ *         description: No autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /withholdings/export
 router.get('/export', authenticate, async (req, res, next) => {
   try {

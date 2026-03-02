@@ -4,7 +4,109 @@ const { authenticate } = require('../middleware/auth');
 const { round2 } = require('../utils/helpers');
 const exchangeRateService = require('../services/exchangeRateService');
 
-// GET /dashboard
+/**
+ * @swagger
+ * /dashboard:
+ *   get:
+ *     summary: Obtener datos del dashboard
+ *     tags: [Dashboard]
+ *     description: Retorna resumen del período actual incluyendo totales mensuales, facturas pendientes y vencidas, top proveedores, gastos por categoría, evolución mensual, retenciones, saldos bancarios y tasa de cambio
+ *     responses:
+ *       200:
+ *         description: Datos del dashboard
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     period:
+ *                       type: string
+ *                       example: "03/2026"
+ *                     monthly_totals:
+ *                       type: object
+ *                       properties:
+ *                         total_ves:
+ *                           type: number
+ *                         total_usd:
+ *                           type: number
+ *                         invoice_count:
+ *                           type: integer
+ *                     pending_invoices:
+ *                       type: object
+ *                       properties:
+ *                         total_ves:
+ *                           type: number
+ *                         total_usd:
+ *                           type: number
+ *                         count:
+ *                           type: integer
+ *                     overdue_invoices:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         total_ves:
+ *                           type: number
+ *                     top_suppliers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           business_name:
+ *                             type: string
+ *                           total_ves:
+ *                             type: number
+ *                     expenses_by_category:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           category:
+ *                             type: string
+ *                           total_ves:
+ *                             type: number
+ *                     monthly_evolution:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           fiscal_period:
+ *                             type: string
+ *                           total_ves:
+ *                             type: number
+ *                           total_usd:
+ *                             type: number
+ *                     withholdings_summary:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         total_ves:
+ *                           type: number
+ *                     bank_balances:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           bank_name:
+ *                             type: string
+ *                           account_number:
+ *                             type: string
+ *                           currency:
+ *                             type: string
+ *                           current_balance:
+ *                             type: number
+ *                     exchange_rate:
+ *                       type: object
+ *                       nullable: true
+ *       401:
+ *         description: No autenticado
+ */
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const now = new Date();

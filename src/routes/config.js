@@ -4,7 +4,39 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
 
-// GET /config/expense-categories
+/**
+ * @swagger
+ * /config/expense-categories:
+ *   get:
+ *     summary: Listar categorías de gasto
+ *     description: Obtiene todas las categorías de gasto activas
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de categorías de gasto
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       code:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ */
 router.get('/expense-categories', authenticate, async (req, res, next) => {
   try {
     const categories = await db('expense_categories').where({ is_active: true }).orderBy('name');
@@ -12,7 +44,50 @@ router.get('/expense-categories', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /config/expense-categories
+/**
+ * @swagger
+ * /config/expense-categories:
+ *   post:
+ *     summary: Crear categoría de gasto
+ *     description: Registra una nueva categoría de gasto
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - code
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Nombre de la categoría
+ *               code:
+ *                 type: string
+ *                 description: Código único de la categoría
+ *               description:
+ *                 type: string
+ *                 description: Descripción de la categoría
+ *     responses:
+ *       201:
+ *         description: Categoría creada exitosamente
+ *       400:
+ *         description: Nombre y código requeridos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Ya existe una categoría con ese nombre o código
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/expense-categories', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const { name, code, description } = req.body;
@@ -24,7 +99,39 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
   } catch (err) { next(err); }
 });
 
-// GET /config/cost-centers
+/**
+ * @swagger
+ * /config/cost-centers:
+ *   get:
+ *     summary: Listar centros de costo
+ *     description: Obtiene todos los centros de costo activos
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de centros de costo
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       code:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ */
 router.get('/cost-centers', authenticate, async (req, res, next) => {
   try {
     const centers = await db('cost_centers').where({ is_active: true }).orderBy('name');
@@ -32,7 +139,50 @@ router.get('/cost-centers', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /config/cost-centers
+/**
+ * @swagger
+ * /config/cost-centers:
+ *   post:
+ *     summary: Crear centro de costo
+ *     description: Registra un nuevo centro de costo
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - code
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Nombre del centro de costo
+ *               code:
+ *                 type: string
+ *                 description: Código único del centro de costo
+ *               description:
+ *                 type: string
+ *                 description: Descripción del centro de costo
+ *     responses:
+ *       201:
+ *         description: Centro de costo creado exitosamente
+ *       400:
+ *         description: Nombre y código requeridos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Ya existe un centro de costo con ese nombre o código
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const { name, code, description } = req.body;
@@ -44,7 +194,32 @@ router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async
   } catch (err) { next(err); }
 });
 
-// GET /config/tax-unit
+/**
+ * @swagger
+ * /config/tax-unit:
+ *   get:
+ *     summary: Obtener valor de la unidad tributaria
+ *     description: Retorna el valor actual de la unidad tributaria (UT)
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Valor de la unidad tributaria
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     value:
+ *                       type: number
+ *                       description: Valor actual de la UT en Bs
+ */
 router.get('/tax-unit', authenticate, async (req, res, next) => {
   try {
     const config = await db('config').where({ key: 'tax_unit_value' }).first();
@@ -52,7 +227,49 @@ router.get('/tax-unit', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /config/tax-unit
+/**
+ * @swagger
+ * /config/tax-unit:
+ *   put:
+ *     summary: Actualizar unidad tributaria
+ *     description: Actualiza el valor de la unidad tributaria (UT)
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - value
+ *             properties:
+ *               value:
+ *                 type: number
+ *                 description: Nuevo valor de la UT en Bs
+ *     responses:
+ *       200:
+ *         description: Unidad tributaria actualizada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     value:
+ *                       type: number
+ *       400:
+ *         description: Valor requerido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.put('/tax-unit', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const { value } = req.body;
@@ -64,7 +281,28 @@ router.put('/tax-unit', authenticate, authorize('admin', 'contador'), async (req
   } catch (err) { next(err); }
 });
 
-// GET /config/company
+/**
+ * @swagger
+ * /config/company:
+ *   get:
+ *     summary: Obtener datos de la empresa
+ *     description: Retorna la configuración de la empresa (RIF, nombre, dirección, contribuyente especial)
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Datos de la empresa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/CompanyConfig'
+ */
 router.get('/company', authenticate, async (req, res, next) => {
   try {
     const configs = await db('config').whereIn('key', ['company_rif', 'company_name', 'company_address', 'is_special_taxpayer']);
@@ -74,7 +312,34 @@ router.get('/company', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /config/company
+/**
+ * @swagger
+ * /config/company:
+ *   put:
+ *     summary: Actualizar datos de la empresa
+ *     description: Actualiza la configuración de la empresa (RIF, nombre, dirección, contribuyente especial). Solo administradores.
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CompanyConfig'
+ *     responses:
+ *       200:
+ *         description: Configuración actualizada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ */
 router.put('/company', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const allowedKeys = ['company_rif', 'company_name', 'company_address', 'is_special_taxpayer'];
@@ -87,7 +352,30 @@ router.put('/company', authenticate, authorize('admin'), async (req, res, next) 
   } catch (err) { next(err); }
 });
 
-// GET /config/withholding-rules
+/**
+ * @swagger
+ * /config/withholding-rules:
+ *   get:
+ *     summary: Listar reglas de retención
+ *     description: Obtiene todas las reglas de retención activas
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de reglas de retención
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/WithholdingRule'
+ */
 router.get('/withholding-rules', authenticate, async (req, res, next) => {
   try {
     const rules = await db('withholding_rules').where({ is_active: true }).orderBy('type', 'concept_code');
@@ -95,7 +383,60 @@ router.get('/withholding-rules', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /config/withholding-rules/:id
+/**
+ * @swagger
+ * /config/withholding-rules/{id}:
+ *   put:
+ *     summary: Actualizar regla de retención
+ *     description: Actualiza una regla de retención existente (tasa, sustraendo UT, estado)
+ *     tags: [Configuración]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la regla de retención
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               rate:
+ *                 type: number
+ *                 description: Porcentaje de retención
+ *               subtract_ut:
+ *                 type: number
+ *                 description: Sustraendo en unidades tributarias
+ *               is_active:
+ *                 type: boolean
+ *                 description: Estado activo/inactivo
+ *               concept_name:
+ *                 type: string
+ *                 description: Nombre del concepto
+ *     responses:
+ *       200:
+ *         description: Regla de retención actualizada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/WithholdingRule'
+ *       404:
+ *         description: Regla no encontrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.put('/withholding-rules/:id', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const rule = await db('withholding_rules').where({ id: req.params.id }).first();

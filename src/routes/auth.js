@@ -6,7 +6,34 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
 
-// POST /auth/login
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Iniciar sesión
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login exitoso, retorna token JWT y datos del usuario
+ *       400:
+ *         description: Email y contraseña requeridos
+ *       401:
+ *         description: Credenciales inválidas
+ */
 router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -43,7 +70,32 @@ router.post('/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /auth/refresh
+/**
+ * @swagger
+ * /auth/refresh:
+ *   post:
+ *     summary: Renovar token de acceso
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Token de refresco obtenido en el login
+ *     responses:
+ *       200:
+ *         description: Nuevo token JWT generado
+ *       400:
+ *         description: Refresh token requerido
+ *       401:
+ *         description: Token inválido o usuario no encontrado
+ */
 router.post('/refresh', async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -65,12 +117,58 @@ router.post('/refresh', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /auth/me
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Obtener perfil del usuario autenticado
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Datos del usuario autenticado
+ *       401:
+ *         description: No autenticado
+ */
 router.get('/me', authenticate, (req, res) => {
   res.json({ success: true, data: req.user });
 });
 
-// POST /auth/users (admin only)
+/**
+ * @swagger
+ * /auth/users:
+ *   post:
+ *     summary: Crear nuevo usuario (solo admin)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, full_name, role]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *               full_name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [admin, accountant, viewer]
+ *     responses:
+ *       201:
+ *         description: Usuario creado exitosamente
+ *       400:
+ *         description: Campos requeridos faltantes
+ *       401:
+ *         description: No autenticado
+ *       403:
+ *         description: No autorizado (requiere rol admin)
+ *       409:
+ *         description: El email ya está registrado
+ */
 router.post('/users', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const { email, password, full_name, role } = req.body;
@@ -90,7 +188,20 @@ router.post('/users', authenticate, authorize('admin'), async (req, res, next) =
   } catch (err) { next(err); }
 });
 
-// GET /auth/users
+/**
+ * @swagger
+ * /auth/users:
+ *   get:
+ *     summary: Listar todos los usuarios (solo admin)
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Lista de usuarios del sistema
+ *       401:
+ *         description: No autenticado
+ *       403:
+ *         description: No autorizado (requiere rol admin)
+ */
 router.get('/users', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const users = await db('users')

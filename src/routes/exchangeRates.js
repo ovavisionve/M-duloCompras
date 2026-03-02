@@ -3,7 +3,34 @@ const { authenticate, authorize } = require('../middleware/auth');
 const exchangeRateService = require('../services/exchangeRateService');
 const auditService = require('../services/auditService');
 
-// GET /exchange-rates/today
+/**
+ * @swagger
+ * /exchange-rates/today:
+ *   get:
+ *     summary: Obtener tasa de cambio del día
+ *     description: Retorna la tasa de cambio vigente para la fecha actual
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tasa de cambio del día
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/ExchangeRate'
+ *       404:
+ *         description: No hay tasa disponible para hoy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/today', authenticate, async (req, res, next) => {
   try {
     const rate = await exchangeRateService.getTodayRate();
@@ -12,7 +39,51 @@ router.get('/today', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /exchange-rates?date=YYYY-MM-DD
+/**
+ * @swagger
+ * /exchange-rates:
+ *   get:
+ *     summary: Consultar tasas de cambio
+ *     description: Obtiene tasas por fecha específica, rango de fechas, o las últimas 30 tasas si no se envían parámetros
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha específica (YYYY-MM-DD)
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicio del rango (YYYY-MM-DD)
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha fin del rango (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: Tasa(s) de cambio encontrada(s)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   oneOf:
+ *                     - $ref: '#/components/schemas/ExchangeRate'
+ *                     - type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/ExchangeRate'
+ */
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const { date, from, to } = req.query;
@@ -31,7 +102,51 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /exchange-rates/range?from=&to=
+/**
+ * @swagger
+ * /exchange-rates/range:
+ *   get:
+ *     summary: Obtener tasas por rango de fechas
+ *     description: Retorna las tasas de cambio dentro de un rango de fechas específico
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicio (YYYY-MM-DD)
+ *       - in: query
+ *         name: to
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha fin (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: Lista de tasas en el rango
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ExchangeRate'
+ *       400:
+ *         description: Parámetros from y to requeridos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/range', authenticate, async (req, res, next) => {
   try {
     const { from, to } = req.query;
@@ -41,7 +156,51 @@ router.get('/range', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /exchange-rates/manual
+/**
+ * @swagger
+ * /exchange-rates/manual:
+ *   post:
+ *     summary: Registrar tasa de cambio manual
+ *     description: Permite registrar manualmente una tasa de cambio para una fecha específica
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - date
+ *               - rate
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 format: date
+ *                 description: Fecha de la tasa (YYYY-MM-DD)
+ *               rate:
+ *                 type: number
+ *                 description: Valor de la tasa en Bs/$
+ *     responses:
+ *       201:
+ *         description: Tasa registrada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/ExchangeRate'
+ *       400:
+ *         description: Fecha y tasa requeridas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/manual', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const { date, rate } = req.body;
@@ -57,7 +216,36 @@ router.post('/manual', authenticate, authorize('admin', 'contador'), async (req,
   } catch (err) { next(err); }
 });
 
-// POST /exchange-rates/fetch (manual trigger)
+/**
+ * @swagger
+ * /exchange-rates/fetch:
+ *   post:
+ *     summary: Obtener tasa BCV
+ *     description: Consulta y almacena la tasa de cambio oficial del BCV. Solo administradores.
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tasa BCV obtenida y almacenada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/ExchangeRate'
+ *                 message:
+ *                   type: string
+ *       502:
+ *         description: No se pudo obtener la tasa del BCV
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/fetch', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const result = await exchangeRateService.fetchAndStoreBcvRate();
