@@ -8,6 +8,58 @@ const { round2 } = require('../utils/helpers');
 // CUENTAS POR PAGAR (Accounts Payable)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/accounts-payable:
+ *   get:
+ *     summary: Reporte de cuentas por pagar
+ *     description: Retorna el listado de facturas pendientes de pago con resumen de antigüedad
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fiscal_period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por proveedor
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Reporte de cuentas por pagar con resumen
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     invoices:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Invoice'
+ *                     summary:
+ *                       type: object
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ */
 // GET /reports/accounts-payable
 router.get('/accounts-payable', authenticate, async (req, res, next) => {
   try {
@@ -16,6 +68,35 @@ router.get('/accounts-payable', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/accounts-payable/pdf:
+ *   get:
+ *     summary: Descargar cuentas por pagar en PDF
+ *     description: Genera el reporte de cuentas por pagar en formato PDF
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fiscal_period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por proveedor
+ *     responses:
+ *       200:
+ *         description: Archivo PDF de cuentas por pagar
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/accounts-payable/pdf
 router.get('/accounts-payable/pdf', authenticate, async (req, res, next) => {
   try {
@@ -78,6 +159,35 @@ router.get('/accounts-payable/pdf', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/accounts-payable/excel:
+ *   get:
+ *     summary: Descargar cuentas por pagar en Excel
+ *     description: Genera el reporte de cuentas por pagar en formato Excel con hojas de detalle y antigüedad
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fiscal_period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por proveedor
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de cuentas por pagar
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/accounts-payable/excel
 router.get('/accounts-payable/excel', authenticate, async (req, res, next) => {
   try {
@@ -150,6 +260,34 @@ router.get('/accounts-payable/excel', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/accounts-payable/csv:
+ *   get:
+ *     summary: Descargar cuentas por pagar en CSV
+ *     description: Genera el reporte de cuentas por pagar en formato CSV con codificación UTF-8
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fiscal_period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por proveedor
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de cuentas por pagar
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/accounts-payable/csv
 router.get('/accounts-payable/csv', authenticate, async (req, res, next) => {
   try {
@@ -173,6 +311,49 @@ router.get('/accounts-payable/csv', authenticate, async (req, res, next) => {
 // GASTOS POR CATEGORÍA (Expenses by Category)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/expenses-by-category:
+ *   get:
+ *     summary: Reporte de gastos por categoría
+ *     description: Retorna el desglose de gastos agrupados por categoría y centro de costo
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Reporte de gastos por categoría
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     by_category:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     by_cost_center:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     detailed:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     summary:
+ *                       type: object
+ */
 // GET /reports/expenses-by-category
 router.get('/expenses-by-category', authenticate, async (req, res, next) => {
   try {
@@ -181,6 +362,30 @@ router.get('/expenses-by-category', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/expenses-by-category/pdf:
+ *   get:
+ *     summary: Descargar gastos por categoría en PDF
+ *     description: Genera el reporte de gastos por categoría en formato PDF
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo PDF de gastos por categoría
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/expenses-by-category/pdf
 router.get('/expenses-by-category/pdf', authenticate, async (req, res, next) => {
   try {
@@ -247,6 +452,30 @@ router.get('/expenses-by-category/pdf', authenticate, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/expenses-by-category/excel:
+ *   get:
+ *     summary: Descargar gastos por categoría en Excel
+ *     description: Genera el reporte de gastos por categoría en formato Excel con hojas por categoría, centro de costo y detallado
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de gastos por categoría
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/expenses-by-category/excel
 router.get('/expenses-by-category/excel', authenticate, async (req, res, next) => {
   try {
@@ -299,6 +528,29 @@ router.get('/expenses-by-category/excel', authenticate, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/expenses-by-category/csv:
+ *   get:
+ *     summary: Descargar gastos por categoría en CSV
+ *     description: Genera el reporte de gastos por categoría en formato CSV
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de gastos por categoría
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/expenses-by-category/csv
 router.get('/expenses-by-category/csv', authenticate, async (req, res, next) => {
   try {
@@ -321,6 +573,64 @@ router.get('/expenses-by-category/csv', authenticate, async (req, res, next) => 
 // MOVIMIENTOS POR PROVEEDOR (Supplier Movements)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/supplier-movements/{id}:
+ *   get:
+ *     summary: Estado de cuenta de proveedor
+ *     description: Retorna facturas, pagos y retenciones de un proveedor específico
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proveedor
+ *       - in: query
+ *         name: from_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicial del rango
+ *       - in: query
+ *         name: to_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha final del rango
+ *     responses:
+ *       200:
+ *         description: Estado de cuenta del proveedor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     supplier:
+ *                       type: object
+ *                     invoices:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Invoice'
+ *                     payments:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Payment'
+ *                     withholdings:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Withholding'
+ *                     summary:
+ *                       type: object
+ */
 // GET /reports/supplier-movements/:id
 router.get('/supplier-movements/:id', authenticate, async (req, res, next) => {
   try {
@@ -329,6 +639,43 @@ router.get('/supplier-movements/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/supplier-movements/{id}/pdf:
+ *   get:
+ *     summary: Descargar estado de cuenta de proveedor en PDF
+ *     description: Genera el estado de cuenta del proveedor en formato PDF con facturas, pagos y retenciones
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proveedor
+ *       - in: query
+ *         name: from_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicial del rango
+ *       - in: query
+ *         name: to_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha final del rango
+ *     responses:
+ *       200:
+ *         description: Archivo PDF del estado de cuenta
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/supplier-movements/:id/pdf
 router.get('/supplier-movements/:id/pdf', authenticate, async (req, res, next) => {
   try {
@@ -390,6 +737,43 @@ router.get('/supplier-movements/:id/pdf', authenticate, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/supplier-movements/{id}/excel:
+ *   get:
+ *     summary: Descargar estado de cuenta de proveedor en Excel
+ *     description: Genera el estado de cuenta del proveedor en formato Excel con hojas de resumen, facturas, pagos y retenciones
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proveedor
+ *       - in: query
+ *         name: from_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicial del rango
+ *       - in: query
+ *         name: to_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha final del rango
+ *     responses:
+ *       200:
+ *         description: Archivo Excel del estado de cuenta
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/supplier-movements/:id/excel
 router.get('/supplier-movements/:id/excel', authenticate, async (req, res, next) => {
   try {
@@ -454,6 +838,42 @@ router.get('/supplier-movements/:id/excel', authenticate, async (req, res, next)
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/supplier-movements/{id}/csv:
+ *   get:
+ *     summary: Descargar estado de cuenta de proveedor en CSV
+ *     description: Genera el estado de cuenta del proveedor en formato CSV con facturas, pagos y retenciones
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proveedor
+ *       - in: query
+ *         name: from_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicial del rango
+ *       - in: query
+ *         name: to_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha final del rango
+ *     responses:
+ *       200:
+ *         description: Archivo CSV del estado de cuenta
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/supplier-movements/:id/csv
 router.get('/supplier-movements/:id/csv', authenticate, async (req, res, next) => {
   try {
@@ -502,6 +922,50 @@ router.get('/supplier-movements/:id/csv', authenticate, async (req, res, next) =
 // DIFERENCIAS CAMBIARIAS (Exchange Differences)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/exchange-differences:
+ *   get:
+ *     summary: Reporte de diferencias cambiarias
+ *     description: Retorna las diferencias cambiarias generadas en pagos en moneda extranjera
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Reporte de diferencias cambiarias
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     payments:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Payment'
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_exchange_difference:
+ *                           type: number
+ *                         total_gains:
+ *                           type: number
+ *                         total_losses:
+ *                           type: number
+ *                         count:
+ *                           type: integer
+ */
 // GET /reports/exchange-differences
 router.get('/exchange-differences', authenticate, async (req, res, next) => {
   try {
@@ -510,6 +974,30 @@ router.get('/exchange-differences', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/exchange-differences/pdf:
+ *   get:
+ *     summary: Descargar diferencias cambiarias en PDF
+ *     description: Genera el reporte de diferencias cambiarias en formato PDF
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo PDF de diferencias cambiarias
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/exchange-differences/pdf
 router.get('/exchange-differences/pdf', authenticate, async (req, res, next) => {
   try {
@@ -564,6 +1052,30 @@ router.get('/exchange-differences/pdf', authenticate, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/exchange-differences/excel:
+ *   get:
+ *     summary: Descargar diferencias cambiarias en Excel
+ *     description: Genera el reporte de diferencias cambiarias en formato Excel con colores para ganancias y pérdidas
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de diferencias cambiarias
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/exchange-differences/excel
 router.get('/exchange-differences/excel', authenticate, async (req, res, next) => {
   try {
@@ -613,6 +1125,29 @@ router.get('/exchange-differences/excel', authenticate, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/exchange-differences/csv:
+ *   get:
+ *     summary: Descargar diferencias cambiarias en CSV
+ *     description: Genera el reporte de diferencias cambiarias en formato CSV
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de diferencias cambiarias
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/exchange-differences/csv
 router.get('/exchange-differences/csv', authenticate, async (req, res, next) => {
   try {
@@ -635,6 +1170,45 @@ router.get('/exchange-differences/csv', authenticate, async (req, res, next) => 
 // RESUMEN DE RETENCIONES (Withholdings Summary)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/withholdings-summary:
+ *   get:
+ *     summary: Resumen de retenciones
+ *     description: Retorna el resumen de retenciones (IVA, ISLR, municipal) agrupado por tipo y proveedor
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Resumen de retenciones
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     withholdings:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Withholding'
+ *                     by_supplier:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     summary:
+ *                       type: object
+ */
 // GET /reports/withholdings-summary
 router.get('/withholdings-summary', authenticate, async (req, res, next) => {
   try {
@@ -643,6 +1217,30 @@ router.get('/withholdings-summary', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/withholdings-summary/pdf:
+ *   get:
+ *     summary: Descargar resumen de retenciones en PDF
+ *     description: Genera el resumen de retenciones en formato PDF con desglose por tipo y proveedor
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo PDF de resumen de retenciones
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/withholdings-summary/pdf
 router.get('/withholdings-summary/pdf', authenticate, async (req, res, next) => {
   try {
@@ -715,6 +1313,30 @@ router.get('/withholdings-summary/pdf', authenticate, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/withholdings-summary/excel:
+ *   get:
+ *     summary: Descargar resumen de retenciones en Excel
+ *     description: Genera el resumen de retenciones en formato Excel con hojas de detalle y resumen por proveedor
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de resumen de retenciones
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/withholdings-summary/excel
 router.get('/withholdings-summary/excel', authenticate, async (req, res, next) => {
   try {
@@ -760,6 +1382,29 @@ router.get('/withholdings-summary/excel', authenticate, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/withholdings-summary/csv:
+ *   get:
+ *     summary: Descargar resumen de retenciones en CSV
+ *     description: Genera el resumen de retenciones en formato CSV
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de resumen de retenciones
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/withholdings-summary/csv
 router.get('/withholdings-summary/csv', authenticate, async (req, res, next) => {
   try {
@@ -782,6 +1427,52 @@ router.get('/withholdings-summary/csv', authenticate, async (req, res, next) => 
 // RESUMEN DE PAGOS (Payment Summary)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/payment-summary:
+ *   get:
+ *     summary: Resumen de pagos
+ *     description: Retorna el resumen de pagos realizados con desglose por método de pago y retenciones aplicadas
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Resumen de pagos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     payments:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Payment'
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_amount:
+ *                           type: number
+ *                         total_count:
+ *                           type: integer
+ *                         total_islr:
+ *                           type: number
+ *                         total_iva:
+ *                           type: number
+ *                         by_method:
+ *                           type: object
+ */
 // GET /reports/payment-summary
 router.get('/payment-summary', authenticate, async (req, res, next) => {
   try {
@@ -790,6 +1481,30 @@ router.get('/payment-summary', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/payment-summary/pdf:
+ *   get:
+ *     summary: Descargar resumen de pagos en PDF
+ *     description: Genera el resumen de pagos en formato PDF con totales y desglose por método
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo PDF de resumen de pagos
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/payment-summary/pdf
 router.get('/payment-summary/pdf', authenticate, async (req, res, next) => {
   try {
@@ -851,6 +1566,30 @@ router.get('/payment-summary/pdf', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/payment-summary/excel:
+ *   get:
+ *     summary: Descargar resumen de pagos en Excel
+ *     description: Genera el resumen de pagos en formato Excel
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de resumen de pagos
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/payment-summary/excel
 router.get('/payment-summary/excel', authenticate, async (req, res, next) => {
   try {
@@ -888,6 +1627,29 @@ router.get('/payment-summary/excel', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/payment-summary/csv:
+ *   get:
+ *     summary: Descargar resumen de pagos en CSV
+ *     description: Genera el resumen de pagos en formato CSV
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *         description: Período fiscal (MM/YYYY)
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de resumen de pagos
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/payment-summary/csv
 router.get('/payment-summary/csv', authenticate, async (req, res, next) => {
   try {
@@ -911,6 +1673,58 @@ router.get('/payment-summary/csv', authenticate, async (req, res, next) => {
 // AUDITORÍA (Audit Log)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @swagger
+ * /reports/audit-log:
+ *   get:
+ *     summary: Registro de auditoría
+ *     description: Retorna el registro de auditoría con acciones realizadas en el sistema, paginado
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema:
+ *           type: string
+ *         description: Filtrar por tipo de entidad
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Filtrar por acción
+ *       - in: query
+ *         name: user_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por usuario
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Registros de auditoría con paginación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ */
 // GET /reports/audit-log
 router.get('/audit-log', authenticate, async (req, res, next) => {
   try {
@@ -919,6 +1733,40 @@ router.get('/audit-log', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/audit-log/excel:
+ *   get:
+ *     summary: Descargar registro de auditoría en Excel
+ *     description: Genera el registro de auditoría en formato Excel (hasta 5000 registros)
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema:
+ *           type: string
+ *         description: Filtrar por tipo de entidad
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Filtrar por acción
+ *       - in: query
+ *         name: user_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por usuario
+ *     responses:
+ *       200:
+ *         description: Archivo Excel de registro de auditoría
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 // GET /reports/audit-log/excel
 router.get('/audit-log/excel', authenticate, async (req, res, next) => {
   try {
@@ -951,6 +1799,39 @@ router.get('/audit-log/excel', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /reports/audit-log/csv:
+ *   get:
+ *     summary: Descargar registro de auditoría en CSV
+ *     description: Genera el registro de auditoría en formato CSV (hasta 5000 registros)
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema:
+ *           type: string
+ *         description: Filtrar por tipo de entidad
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Filtrar por acción
+ *       - in: query
+ *         name: user_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por usuario
+ *     responses:
+ *       200:
+ *         description: Archivo CSV de registro de auditoría
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ */
 // GET /reports/audit-log/csv
 router.get('/audit-log/csv', authenticate, async (req, res, next) => {
   try {

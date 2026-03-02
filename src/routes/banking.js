@@ -5,6 +5,30 @@ const { AppError } = require('../middleware/errorHandler');
 const bankingService = require('../services/bankingService');
 const auditService = require('../services/auditService');
 
+/**
+ * @swagger
+ * /banking/bank-accounts:
+ *   get:
+ *     summary: Listar cuentas bancarias
+ *     description: Retorna todas las cuentas bancarias registradas, ordenadas por nombre de banco
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de cuentas bancarias
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/BankAccount'
+ */
 // GET /banking/bank-accounts
 router.get('/bank-accounts', authenticate, async (req, res, next) => {
   try {
@@ -13,6 +37,63 @@ router.get('/bank-accounts', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/bank-accounts:
+ *   post:
+ *     summary: Crear cuenta bancaria
+ *     description: Registra una nueva cuenta bancaria. Requiere rol admin o tesorero.
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bank_name
+ *               - account_type
+ *               - account_number
+ *               - currency
+ *             properties:
+ *               bank_name:
+ *                 type: string
+ *                 example: "Banco Nacional"
+ *               account_type:
+ *                 type: string
+ *                 example: "corriente"
+ *               account_number:
+ *                 type: string
+ *                 example: "0102-0345-67-8901234567"
+ *               currency:
+ *                 type: string
+ *                 example: "VES"
+ *               initial_balance:
+ *                 type: number
+ *                 example: 0
+ *     responses:
+ *       201:
+ *         description: Cuenta bancaria creada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/BankAccount'
+ *       400:
+ *         description: Campos requeridos faltantes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado (requiere rol admin o tesorero)
+ */
 // POST /banking/bank-accounts
 router.post('/bank-accounts', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
@@ -32,6 +113,57 @@ router.post('/bank-accounts', authenticate, authorize('admin', 'tesorero'), asyn
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/bank-accounts/{id}/statements:
+ *   post:
+ *     summary: Importar movimientos bancarios
+ *     description: Importa un lote de movimientos bancarios desde un estado de cuenta. Requiere rol admin, tesorero o contador.
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cuenta bancaria
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - movements
+ *             properties:
+ *               movements:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                 description: Lista de movimientos a importar
+ *     responses:
+ *       201:
+ *         description: Movimientos importados exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Debe enviar al menos un movimiento
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado
+ */
 // POST /banking/bank-accounts/:id/statements (import movements)
 router.post('/bank-accounts/:id/statements', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
   try {
@@ -42,6 +174,69 @@ router.post('/bank-accounts/:id/statements', authenticate, authorize('admin', 't
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/bank-accounts/{id}/movements:
+ *   get:
+ *     summary: Listar movimientos de cuenta bancaria
+ *     description: Retorna los movimientos bancarios de una cuenta, con filtros opcionales por fecha y estado de conciliación
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cuenta bancaria
+ *       - in: query
+ *         name: from_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha inicial del rango
+ *       - in: query
+ *         name: to_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Fecha final del rango
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, reconciled]
+ *         description: Estado de conciliación
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Registros por página
+ *     responses:
+ *       200:
+ *         description: Lista de movimientos con paginación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ */
 // GET /banking/bank-accounts/:id/movements
 router.get('/bank-accounts/:id/movements', authenticate, async (req, res, next) => {
   try {
@@ -62,6 +257,48 @@ router.get('/bank-accounts/:id/movements', authenticate, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/reconciliation/auto:
+ *   post:
+ *     summary: Conciliación bancaria automática
+ *     description: Ejecuta el proceso de conciliación automática para una cuenta bancaria, emparejando movimientos con pagos registrados
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bank_account_id
+ *             properties:
+ *               bank_account_id:
+ *                 type: integer
+ *                 description: ID de la cuenta bancaria
+ *     responses:
+ *       200:
+ *         description: Resultado de la conciliación automática
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: ID de cuenta bancaria requerido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado
+ */
 // POST /banking/reconciliation/auto
 router.post('/reconciliation/auto', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
   try {
@@ -72,6 +309,52 @@ router.post('/reconciliation/auto', authenticate, authorize('admin', 'tesorero',
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/reconciliation/manual:
+ *   post:
+ *     summary: Conciliación bancaria manual
+ *     description: Vincula manualmente un movimiento bancario con un pago registrado
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - movement_id
+ *               - payment_id
+ *             properties:
+ *               movement_id:
+ *                 type: integer
+ *                 description: ID del movimiento bancario
+ *               payment_id:
+ *                 type: integer
+ *                 description: ID del pago registrado
+ *     responses:
+ *       200:
+ *         description: Conciliación manual realizada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: IDs de movimiento y pago requeridos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado
+ */
 // POST /banking/reconciliation/manual
 router.post('/reconciliation/manual', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
   try {
@@ -82,6 +365,48 @@ router.post('/reconciliation/manual', authenticate, authorize('admin', 'tesorero
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/reconciliation/report:
+ *   get:
+ *     summary: Reporte de conciliación bancaria
+ *     description: Genera el reporte de conciliación para una cuenta bancaria y período específico
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: bank_account_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cuenta bancaria
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Reporte de conciliación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Cuenta bancaria y período requeridos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /banking/reconciliation/report?period=MM/YYYY
 router.get('/reconciliation/report', authenticate, async (req, res, next) => {
   try {
@@ -92,6 +417,41 @@ router.get('/reconciliation/report', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/api-config:
+ *   get:
+ *     summary: Obtener configuración de API bancaria
+ *     description: Retorna la configuración actual de la API bancaria (clave enmascarada). Requiere rol admin o tesorero.
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Configuración de API bancaria
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bank_api_provider:
+ *                       type: string
+ *                     bank_api_url:
+ *                       type: string
+ *                     bank_api_key_masked:
+ *                       type: string
+ *                     bank_api_enabled:
+ *                       type: string
+ *                     is_configured:
+ *                       type: boolean
+ *       403:
+ *         description: No autorizado (requiere rol admin o tesorero)
+ */
 // GET /banking/api-config
 router.get('/api-config', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
@@ -110,6 +470,49 @@ router.get('/api-config', authenticate, authorize('admin', 'tesorero'), async (r
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/api-config:
+ *   put:
+ *     summary: Actualizar configuración de API bancaria
+ *     description: Actualiza la configuración de conexión a la API bancaria. Requiere rol admin.
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               bank_api_provider:
+ *                 type: string
+ *                 description: Proveedor de la API bancaria
+ *               bank_api_url:
+ *                 type: string
+ *                 description: URL de la API bancaria
+ *               bank_api_key:
+ *                 type: string
+ *                 description: Clave de la API bancaria
+ *               bank_api_enabled:
+ *                 type: boolean
+ *                 description: Habilitar/deshabilitar la API bancaria
+ *     responses:
+ *       200:
+ *         description: Configuración actualizada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       403:
+ *         description: No autorizado (requiere rol admin)
+ */
 // PUT /banking/api-config
 router.put('/api-config', authenticate, authorize('admin'), async (req, res, next) => {
   try {
@@ -131,6 +534,42 @@ router.put('/api-config', authenticate, authorize('admin'), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /banking/sync:
+ *   post:
+ *     summary: Sincronizar movimientos desde API bancaria
+ *     description: Obtiene movimientos bancarios desde la API del banco configurada. Requiere que la API esté habilitada y configurada.
+ *     tags: [Banca]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Movimientos sincronizados exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: API bancaria no habilitada o configuración incompleta
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado
+ *       501:
+ *         description: Integración con proveedor bancario no implementada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /banking/sync - Fetch movements from bank API
 router.post('/sync', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
   try {
