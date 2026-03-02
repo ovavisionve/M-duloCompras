@@ -1,4 +1,8 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
+const migrationsDir = path.resolve(__dirname, 'migrations');
+const seedsDir = path.resolve(__dirname, 'seeds');
 
 module.exports = {
   development: {
@@ -10,8 +14,8 @@ module.exports = {
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
     },
-    migrations: { directory: './migrations' },
-    seeds: { directory: './seeds' },
+    migrations: { directory: migrationsDir },
+    seeds: { directory: seedsDir },
   },
   production: {
     client: 'pg',
@@ -26,7 +30,7 @@ module.exports = {
         ssl: { rejectUnauthorized: false },
       },
     pool: { min: 1, max: 5 },
-    migrations: { directory: './migrations' },
-    seeds: { directory: './seeds' },
+    migrations: { directory: migrationsDir },
+    seeds: { directory: seedsDir },
   },
 };

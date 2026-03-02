@@ -5,6 +5,14 @@
  * Source: Decreto 1808, Art. 9 (G.O. 36.203 del 12/05/1997)
  */
 exports.up = async function (knex) {
+  // Unlink any withholdings referencing ISLR rules before deleting them
+  const islrRuleIds = await knex('withholding_rules').where({ type: 'ISLR' }).select('id');
+  if (islrRuleIds.length) {
+    await knex('withholdings')
+      .whereIn('withholding_rule_id', islrRuleIds.map((r) => r.id))
+      .update({ withholding_rule_id: null });
+  }
+
   // Remove all existing ISLR withholding rules (keep IVA as-is)
   await knex('withholding_rules').where({ type: 'ISLR' }).del();
 
