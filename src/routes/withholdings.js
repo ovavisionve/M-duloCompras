@@ -106,7 +106,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     const isIVA = withholding.type === 'IVA';
     const title = isIVA ? 'COMPROBANTE DE RETENCIÓN DE IVA' : 'COMPROBANTE DE RETENCIÓN DE ISLR';
 
-    doc.rect(leftCol, doc.y, pageW, 28).fill('#1a365d');
+    doc.rect(leftCol, doc.y, pageW, 28).fill('#2b6cb0');
     doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold')
       .text(title, leftCol, doc.y - 26, { width: pageW, align: 'center' });
     doc.fillColor('#000000');
@@ -129,7 +129,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     // ═══════════════════════════════════════════════════
     const agentBoxY = doc.y;
     doc.rect(leftCol, agentBoxY, pageW, 16).fill('#e2e8f0');
-    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+    doc.fillColor('#2b6cb0').fontSize(9).font('Helvetica-Bold')
       .text('AGENTE DE RETENCIÓN', leftCol + 5, agentBoxY + 3, { width: pageW });
     doc.fillColor('#000000');
     doc.y = agentBoxY + 20;
@@ -148,7 +148,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     // ═══════════════════════════════════════════════════
     const provBoxY = doc.y;
     doc.rect(leftCol, provBoxY, pageW, 16).fill('#e2e8f0');
-    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+    doc.fillColor('#2b6cb0').fontSize(9).font('Helvetica-Bold')
       .text('SUJETO RETENIDO', leftCol + 5, provBoxY + 3, { width: pageW });
     doc.fillColor('#000000');
     doc.y = provBoxY + 20;
@@ -184,7 +184,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
       // Table header
       let tableX = leftCol;
       const tableHeaderY = doc.y;
-      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#2d3748');
+      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#34567a');
       doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
       for (const col of cols) {
         doc.text(col.header, tableX + 2, tableHeaderY + 4, { width: col.width - 4, align: col.align });
@@ -232,7 +232,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
 
       // Totals row
       const totY = doc.y;
-      doc.rect(leftCol, totY, pageW, 16).fill('#2d3748');
+      doc.rect(leftCol, totY, pageW, 16).fill('#34567a');
       doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
       tableX = leftCol;
       const totals = ['', '', 'TOTALES:', fmtNum(totalFacturado), fmtNum(totalBase), '', fmtNum(totalIvaFact), fmtNum(totalRetenido)];
@@ -257,7 +257,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
 
       let tableX = leftCol;
       const tableHeaderY = doc.y;
-      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#2d3748');
+      doc.rect(leftCol, tableHeaderY, pageW, 16).fill('#34567a');
       doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
       for (const col of cols) {
         doc.text(col.header, tableX + 2, tableHeaderY + 4, { width: col.width - 4, align: col.align });
@@ -299,7 +299,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
       }
 
       const totY = doc.y;
-      doc.rect(leftCol, totY, pageW, 16).fill('#2d3748');
+      doc.rect(leftCol, totY, pageW, 16).fill('#34567a');
       doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
       tableX = leftCol;
       const totals = ['', '', 'TOTALES:', fmtNum(totalBase), '', '', fmtNum(totalRetenido)];
@@ -317,7 +317,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     doc.moveDown(0.8);
     const sumY = doc.y;
     doc.rect(leftCol, sumY, pageW, 16).fill('#e2e8f0');
-    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold')
+    doc.fillColor('#2b6cb0').fontSize(9).font('Helvetica-Bold')
       .text('RESUMEN', leftCol + 5, sumY + 3, { width: pageW });
     doc.fillColor('#000000');
     doc.y = sumY + 20;
@@ -335,12 +335,6 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
     doc.font('Helvetica-Bold').text('Total Retenido (Bs.):', summaryLeft, sl3);
     doc.font('Helvetica-Bold').fontSize(11).text(`Bs. ${fmtNum(withholding.amount_ves)}`, summaryValX, sl3);
     doc.fontSize(9).font('Helvetica');
-    const sl4 = doc.y + 2;
-    doc.font('Helvetica-Bold').text('Equivalente en USD:', summaryLeft, sl4);
-    doc.font('Helvetica').text(`$ ${fmtNum(withholding.amount_usd)}`, summaryValX, sl4);
-    const sl5 = doc.y + 2;
-    doc.font('Helvetica-Bold').text('Tasa de Cambio BCV:', summaryLeft, sl5);
-    doc.font('Helvetica').text(`Bs. ${parseFloat(withholding.exchange_rate).toFixed(4)} / USD`, summaryValX, sl5);
 
     // ═══════════════════════════════════════════════════
     // FOOTER - Legal basis and signatures
