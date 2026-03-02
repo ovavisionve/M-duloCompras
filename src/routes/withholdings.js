@@ -205,6 +205,41 @@ router.get('/export', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings/{id}:
+ *   get:
+ *     summary: Obtener retención por ID
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID de la retención
+ *     responses:
+ *       200:
+ *         description: Detalle de la retención
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Withholding'
+ *       404:
+ *         description: Retención no encontrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /withholdings/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -213,6 +248,37 @@ router.get('/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings/{id}/pdf:
+ *   get:
+ *     summary: Descargar comprobante de retención en PDF
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID de la retención
+ *     responses:
+ *       200:
+ *         description: Archivo PDF del comprobante de retención
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Retención no encontrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /withholdings/:id/pdf
 router.get('/:id/pdf', authenticate, async (req, res, next) => {
   try {
@@ -508,6 +574,45 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings:
+ *   post:
+ *     summary: Crear una nueva retención
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WithholdingInput'
+ *     responses:
+ *       201:
+ *         description: Retención creada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Withholding'
+ *       400:
+ *         description: Datos inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado (requiere rol admin o contador)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /withholdings
 router.post('/', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
@@ -516,6 +621,59 @@ router.post('/', authenticate, authorize('admin', 'contador'), async (req, res, 
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /withholdings/{id}/void:
+ *   post:
+ *     summary: Anular una retención
+ *     tags: [Retenciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID de la retención a anular
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Motivo de la anulación
+ *     responses:
+ *       200:
+ *         description: Retención anulada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Withholding'
+ *       403:
+ *         description: No autorizado (requiere rol admin o contador)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Retención no encontrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // POST /withholdings/:id/void
 router.post('/:id/void', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
