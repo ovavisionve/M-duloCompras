@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3, DollarSign } from 'lucide-react';
+import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3, DollarSign, X } from 'lucide-react';
 import api from '../api';
 
 const statusBadge = {
@@ -23,6 +23,12 @@ const statusLabel = {
 
 const docTypeLabel = { FC: 'Factura Compra', FG: 'Factura Gasto', ND: 'Nota Débito', NC: 'Nota Crédito', DSF: 'Sin Factura' };
 
+const methodLabels = {
+  transferencia: 'Transferencia', pago_movil: 'Pago Móvil', efectivo_ves: 'Efectivo VES',
+  efectivo_usd: 'Efectivo USD', zelle: 'Zelle', tarjeta: 'Tarjeta', cheque: 'Cheque',
+  cripto: 'Cripto', paypal: 'PayPal',
+};
+
 const fmtDate = (d) => {
   if (!d) return '';
   const dt = new Date(d);
@@ -37,6 +43,17 @@ export default function Invoices() {
   const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // ── Payment Modal state ──
+  const [payInvoice, setPayInvoice] = useState(null); // invoice object to pay
+  const [payBalance, setPayBalance] = useState(null);
+  const today = new Date().toISOString().split('T')[0];
+  const [payForm, setPayForm] = useState({
+    payment_date: today, payment_method: 'transferencia', currency: 'VES',
+    amount: '', exchange_rate: '', reference_number: '', observations: '',
+  });
+  const [payError, setPayError] = useState('');
+  const [paySubmitting, setPaySubmitting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -68,6 +85,64 @@ export default function Invoices() {
       load();
     } catch (err) {
       alert(err.response?.data?.error?.message || 'Error al cambiar estatus');
+    }
+  };
+
+  // ── Payment Modal helpers ──
+  const openPayModal = async (invoice) => {
+    setPayError('');
+    setPaySubmitting(false);
+    try {
+      const balRes = await api.get(`/invoices/${invoice.id}/balance`);
+      const bal = balRes.data.data;
+      setPayBalance(bal);
+      setPayForm({
+        payment_date: today, payment_method: 'transferencia',
+        currency: invoice.currency || 'VES',
+        amount: String(bal.remaining),
+        exchange_rate: '', reference_number: '', observations: '',
+      });
+      setPayInvoice(invoice);
+      // Fetch today's rate
+      api.get('/exchange-rates/today').then((r) => {
+        if (r.data.data) setPayForm((f) => ({ ...f, exchange_rate: r.data.data.rate }));
+      }).catch(() => {});
+    } catch (err) {
+      alert('Error al obtener saldo de la factura');
+    }
+  };
+
+  const closePayModal = () => {
+    setPayInvoice(null);
+    setPayBalance(null);
+    setPayError('');
+  };
+
+  const handlePaySubmit = async (e) => {
+    e.preventDefault();
+    setPayError('');
+    const amount = parseFloat(payForm.amount);
+    if (!amount || amount <= 0) { setPayError('Ingrese un monto válido.'); return; }
+    if (payBalance && amount > payBalance.remaining + 0.01) {
+      setPayError(`El monto (${amount}) excede el saldo pendiente (${payBalance.remaining}).`);
+      return;
+    }
+    setPaySubmitting(true);
+    try {
+      await api.post('/payments', {
+        ...payForm,
+        amount,
+        exchange_rate: parseFloat(payForm.exchange_rate),
+        invoice_allocations: [{ invoice_id: payInvoice.id, amount }],
+      });
+      closePayModal();
+      load();
+      // Refresh detail if it's open
+      if (detail && detail.id === payInvoice.id) viewDetail(payInvoice.id);
+    } catch (err) {
+      setPayError(err.response?.data?.error?.message || 'Error al registrar pago');
+    } finally {
+      setPaySubmitting(false);
     }
   };
 
@@ -268,9 +343,16 @@ export default function Invoices() {
                 <td style={{ fontFamily: 'monospace' }}>{Number(inv.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                 <td><span className={`badge ${statusBadge[inv.status]}`}>{statusLabel[inv.status]}</span></td>
                 <td>
-                  <button className="btn btn-sm" onClick={() => viewDetail(inv.id)} title="Ver detalle">
-                    <Eye size={14} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button className="btn btn-sm" onClick={() => viewDetail(inv.id)} title="Ver detalle">
+                      <Eye size={14} />
+                    </button>
+                    {['registrada', 'pago_parcial'].includes(inv.status) && (
+                      <button className="btn btn-sm btn-primary" onClick={() => openPayModal(inv)} title="Registrar pago">
+                        <DollarSign size={14} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -278,6 +360,84 @@ export default function Invoices() {
           </tbody>
         </table>
       </div>
+
+      {/* ── Payment Modal Overlay ── */}
+      {payInvoice && (
+        <div className="modal-overlay" onClick={closePayModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Registrar Pago</h3>
+              <button className="btn btn-sm" onClick={closePayModal}><X size={16} /></button>
+            </div>
+
+            {/* Invoice info summary */}
+            <div style={{ padding: '0.75rem', background: 'var(--gray-50)', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                <div><strong>Proveedor:</strong> {payInvoice.supplier_name}</div>
+                <div><strong>Factura:</strong> {payInvoice.invoice_number}</div>
+                <div><strong>Moneda:</strong> {payInvoice.currency}</div>
+                <div><strong>Total:</strong> {Number(payInvoice.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
+              </div>
+              {payBalance && (
+                <div style={{ marginTop: '0.5rem', fontWeight: 'bold', color: 'var(--warning)' }}>
+                  Saldo Pendiente: {Number(payBalance.remaining).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {payBalance.currency}
+                </div>
+              )}
+            </div>
+
+            {payError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{payError}</div>}
+
+            <form onSubmit={handlePaySubmit}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha de Pago *</label>
+                  <input type="date" value={payForm.payment_date} onChange={(e) => setPayForm({ ...payForm, payment_date: e.target.value })} required />
+                </div>
+                <div className="form-group">
+                  <label>Método de Pago *</label>
+                  <select value={payForm.payment_method} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })}>
+                    {Object.entries(methodLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Moneda *</label>
+                  <select value={payForm.currency} onChange={(e) => setPayForm({ ...payForm, currency: e.target.value })}>
+                    <option value="VES">VES</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Tasa BCV *</label>
+                  <input type="number" step="0.000001" value={payForm.exchange_rate} onChange={(e) => setPayForm({ ...payForm, exchange_rate: e.target.value })} required />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Monto a Pagar *</label>
+                  <input type="number" step="0.01" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} required max={payBalance?.remaining} />
+                </div>
+                <div className="form-group">
+                  <label>Nº Referencia</label>
+                  <input value={payForm.reference_number} onChange={(e) => setPayForm({ ...payForm, reference_number: e.target.value })} placeholder="Nº de transferencia, cheque, etc." />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Observaciones</label>
+                <input value={payForm.observations} onChange={(e) => setPayForm({ ...payForm, observations: e.target.value })} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <button type="submit" className="btn btn-primary" disabled={paySubmitting}>
+                  <DollarSign size={16} /> {paySubmitting ? 'Registrando...' : 'Registrar Pago'}
+                </button>
+                <button type="button" className="btn" onClick={closePayModal}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
