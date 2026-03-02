@@ -2,6 +2,51 @@ const router = require('express').Router();
 const { authenticate, authorize } = require('../middleware/auth');
 const purchaseBookService = require('../services/purchaseBookService');
 
+/**
+ * @swagger
+ * /purchase-book:
+ *   get:
+ *     summary: Obtener libro de compras del período
+ *     description: Retorna todas las entradas del libro de compras para el período fiscal indicado
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Libro de compras del período
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     entries:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Invoice'
+ *                     totals:
+ *                       type: object
+ *                     entry_count:
+ *                       type: integer
+ *       400:
+ *         description: Período no proporcionado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /purchase-book?period=MM/YYYY
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -12,6 +57,42 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /purchase-book/validate:
+ *   get:
+ *     summary: Validar período del libro de compras
+ *     description: Valida la integridad y consistencia de las entradas del libro para el período indicado
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Resultado de la validación del período
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Error de validación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /purchase-book/validate?period=MM/YYYY
 router.get('/validate', authenticate, async (req, res, next) => {
   try {
@@ -20,6 +101,38 @@ router.get('/validate', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /purchase-book/pdf:
+ *   get:
+ *     summary: Descargar libro de compras en PDF (Art. 75 RLIVA)
+ *     description: Genera el libro de compras en formato PDF conforme al Artículo 75 del Reglamento de la Ley de IVA
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Archivo PDF del libro de compras
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Período no proporcionado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /purchase-book/pdf?period=MM/YYYY
 router.get('/pdf', authenticate, async (req, res, next) => {
   try {
@@ -165,6 +278,38 @@ router.get('/pdf', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /purchase-book/excel:
+ *   get:
+ *     summary: Descargar libro de compras en Excel
+ *     description: Genera el libro de compras en formato Excel (.xlsx) con todas las entradas del período
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Archivo Excel del libro de compras
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Período no proporcionado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /purchase-book/excel?period=MM/YYYY
 router.get('/excel', authenticate, async (req, res, next) => {
   try {
@@ -223,6 +368,37 @@ router.get('/excel', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /purchase-book/seniat:
+ *   get:
+ *     summary: Exportar libro de compras en TXT para SENIAT
+ *     description: Genera el archivo TXT tabulado para importación en el portal del SENIAT
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Archivo TXT para el SENIAT
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Período no proporcionado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /purchase-book/seniat?period=MM/YYYY (TXT format)
 router.get('/seniat', authenticate, async (req, res, next) => {
   try {
@@ -253,6 +429,44 @@ router.get('/seniat', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * @swagger
+ * /purchase-book/close:
+ *   post:
+ *     summary: Cerrar período fiscal del libro de compras
+ *     description: Cierra el período fiscal indicado, impidiendo modificaciones posteriores. Requiere rol admin o contador.
+ *     tags: [Libro de Compras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "01/2026"
+ *         description: Período fiscal en formato MM/YYYY
+ *     responses:
+ *       200:
+ *         description: Período cerrado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Error al cerrar período
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: No autorizado (requiere rol admin o contador)
+ */
 // POST /purchase-book/close?period=MM/YYYY
 router.post('/close', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
