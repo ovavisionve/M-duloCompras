@@ -10,7 +10,19 @@ const fmtDate = (d) => {
   const dt = new Date(d);
   return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
 };
-const fmtNum = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 });
+const fmtNum = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtRate = (n) => n ? Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '-';
+
+// Calculate derived fields for an operation
+function calcOpFields(op) {
+  const bcv = parseFloat(op.bcv_rate) || 0;
+  const ves = parseFloat(op.amount_ves) || 0;
+  const usd = parseFloat(op.amount_usd) || 0;
+  const usdBcv = bcv > 0 ? ves / bcv : 0;
+  const diffUsd = usd > 0 ? usd - usdBcv : 0;
+  const diffVes = parseFloat(op.exchange_difference) || 0;
+  return { usdBcv, diffUsd, diffVes };
+}
 
 export default function Treasury() {
   const [ops, setOps] = useState([]);
@@ -41,7 +53,12 @@ export default function Treasury() {
 
   const load = () => {
     setLoading(true);
-    api.get('/treasury', { params: { ...filters, page: pagination.page, limit: 20 } })
+    // Clean empty params before sending
+    const params = { page: pagination.page, limit: 20 };
+    if (filters.status) params.status = filters.status;
+    if (filters.from_date) params.from_date = filters.from_date;
+    if (filters.to_date) params.to_date = filters.to_date;
+    api.get('/treasury', { params })
       .then((res) => { setOps(res.data.data); setPagination((p) => ({ ...p, total: res.data.pagination?.total || 0 })); })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -79,9 +96,7 @@ export default function Treasury() {
   const openReceive = (op) => {
     setReceiveError('');
     setReceiveOp(op);
-    // Pre-calculate expected USD if BCV rate exists
-    const expectedUsd = op.bcv_rate ? (parseFloat(op.amount_ves) / parseFloat(op.bcv_rate)).toFixed(2) : '';
-    setReceiveForm({ amount_usd: expectedUsd, parallel_rate: '', destination_type: 'banco_usd' });
+    setReceiveForm({ amount_usd: '', parallel_rate: '', destination_type: 'banco_usd' });
   };
 
   const handleReceive = async (e) => {
@@ -119,6 +134,19 @@ export default function Treasury() {
     } catch (err) { alert('Error al cargar detalle'); }
   };
 
+  // Helper for the receive modal preview
+  const previewCalc = () => {
+    if (!receiveOp || !receiveForm.amount_usd || !receiveForm.parallel_rate) return null;
+    const usd = parseFloat(receiveForm.amount_usd);
+    const parallel = parseFloat(receiveForm.parallel_rate);
+    const bcv = parseFloat(receiveOp.bcv_rate) || 0;
+    const ves = parseFloat(receiveOp.amount_ves);
+    const usdBcv = bcv > 0 ? ves / bcv : 0;
+    const diffUsd = usd - usdBcv;
+    const costReal = usd * parallel;
+    return { usd, parallel, bcv, ves, usdBcv, diffUsd, costReal };
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -136,7 +164,8 @@ export default function Treasury() {
       </div>
 
       <div style={{ background: '#fef3c7', border: '1px solid #fde047', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#92400e' }}>
-        <strong>Uso interno:</strong> Este módulo registra operaciones de compra de divisas a tasa paralela. No se refleja en reportes fiscales (SENIAT). Los movimientos se registran contablemente como Préstamos Accionistas.
+        <strong>Uso interno:</strong> Registro de compra de divisas a tasa paralela. No visible en reportes SENIAT.
+        Contabilizado como Préstamos Accionistas. Muestra la diferencia entre lo que vale a tasa BCV vs lo que cuesta a tasa paralela.
       </div>
 
       {/* ── Monthly Summary ── */}
@@ -162,23 +191,53 @@ export default function Treasury() {
                   <div className="value" style={{ color: 'var(--danger)' }}>{fmtNum(summary.total_ves_out)}</div>
                 </div>
                 <div className="stat-card">
-                  <div className="label">Total USD Entrada</div>
-                  <div className="value" style={{ color: 'var(--success)' }}>{fmtNum(summary.total_usd_in)}</div>
+                  <div className="label">USD Equiv. BCV</div>
+                  <div className="value" style={{ color: 'var(--gray-700)' }}>{fmtNum(summary.total_usd_equivalent_bcv)}</div>
+                  <div className="sub">Lo que valdrían a tasa BCV</div>
                 </div>
                 <div className="stat-card">
-                  <div className="label">Tasa Promedio</div>
-                  <div className="value">{fmtNum(summary.avg_parallel_rate)}</div>
+                  <div className="label">USD Reales Comprados</div>
+                  <div className="value" style={{ color: 'var(--success)' }}>{fmtNum(summary.total_usd_in)}</div>
+                  <div className="sub">Lo que realmente se compró</div>
                 </div>
               </div>
-              <div className="stats-grid" style={{ marginBottom: 0 }}>
-                <div className="stat-card" style={{ borderLeft: `4px solid ${summary.net_exchange_difference >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
-                  <div className="label">Diferencial Cambiario Neto</div>
-                  <div className="value" style={{ color: summary.net_exchange_difference >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                    {summary.net_exchange_difference >= 0 ? '+' : ''}{fmtNum(summary.net_exchange_difference)} VES
+
+              {/* Main result card */}
+              <div className="stats-grid">
+                <div className="stat-card" style={{ borderLeft: `4px solid ${summary.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+                  <div className="label">Resultado en USD</div>
+                  <div className="value" style={{ color: summary.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {summary.diff_usd >= 0 ? '+' : ''}{fmtNum(summary.diff_usd)} USD
                   </div>
-                  <div className="sub">Ganancia: +{fmtNum(summary.total_gains)} | Pérdida: -{fmtNum(summary.total_losses)}</div>
+                  <div className="sub">{summary.diff_usd >= 0 ? 'Ganancia' : 'Pérdida'}: se {summary.diff_usd >= 0 ? 'compraron más USD de lo esperado' : 'compraron menos USD de lo esperado a BCV'}</div>
+                </div>
+                <div className="stat-card" style={{ borderLeft: `4px solid ${summary.diff_ves >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+                  <div className="label">Resultado en VES</div>
+                  <div className="value" style={{ color: summary.diff_ves >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {summary.diff_ves >= 0 ? '+' : ''}{fmtNum(summary.diff_ves)} VES
+                  </div>
+                  <div className="sub">Equivalente del diferencial en bolívares</div>
                 </div>
               </div>
+
+              <div className="stats-grid" style={{ marginBottom: 0 }}>
+                <div className="stat-card">
+                  <div className="label">Tasa Promedio Paralela</div>
+                  <div className="value">{fmtRate(summary.avg_parallel_rate)}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="label">Tasa Promedio BCV</div>
+                  <div className="value">{fmtRate(summary.avg_bcv_rate)}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="label">Spread Promedio</div>
+                  <div className="value" style={{ color: 'var(--warning)' }}>
+                    {summary.avg_parallel_rate && summary.avg_bcv_rate ? fmtNum(((summary.avg_parallel_rate - summary.avg_bcv_rate) / summary.avg_bcv_rate * 100)) : '0,00'}%
+                  </div>
+                  <div className="sub">Diferencia porcentual paralela vs BCV</div>
+                </div>
+              </div>
+
               {summary.account_balances?.length > 0 && (
                 <div style={{ marginTop: '1rem' }}>
                   <strong style={{ fontSize: '0.85rem' }}>Movimientos por Cuenta:</strong>
@@ -206,7 +265,7 @@ export default function Treasury() {
         <div className="card" style={{ marginBottom: '1rem' }}>
           <h3 style={{ marginBottom: '0.75rem' }}>Paso 1: Registrar Salida de VES</h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
-            Registre la salida de bolívares para compra de divisas. Se contabiliza como: Préstamos Accionista (D) / Banco VES (C)
+            Registre la salida de bolívares para compra de divisas. Préstamos Accionista (D) / Banco VES (C)
           </p>
           {formError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{formError}</div>}
           <form onSubmit={handleCreate}>
@@ -217,13 +276,18 @@ export default function Treasury() {
               </div>
               <div className="form-group">
                 <label>Monto VES *</label>
-                <input type="number" step="0.01" value={form.amount_ves} onChange={(e) => setForm({ ...form, amount_ves: e.target.value })} required placeholder="Monto en bolívares" />
+                <input type="number" step="0.01" value={form.amount_ves} onChange={(e) => setForm({ ...form, amount_ves: e.target.value })} required placeholder="Bolívares que salen" />
               </div>
               <div className="form-group">
                 <label>Tasa BCV del día</label>
                 <input type="number" step="0.000001" value={form.bcv_rate} onChange={(e) => setForm({ ...form, bcv_rate: e.target.value })} placeholder="Se carga automática" />
               </div>
             </div>
+            {form.amount_ves && form.bcv_rate && (
+              <div style={{ padding: '0.5rem 0.75rem', background: '#f0f9ff', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--info)' }}>
+                A tasa BCV ({form.bcv_rate}), estos {fmtNum(form.amount_ves)} VES equivalen a <strong>{fmtNum(parseFloat(form.amount_ves) / parseFloat(form.bcv_rate))} USD</strong>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>Proveedor / Destino</label>
@@ -246,7 +310,8 @@ export default function Treasury() {
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="form-row">
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+            <label>Estatus</label>
+            <select value={filters.status} onChange={(e) => { setFilters({ ...filters, status: e.target.value }); setPagination((p) => ({ ...p, page: 1 })); }}>
               <option value="">Todos los estatus</option>
               <option value="pendiente">VES Enviado</option>
               <option value="usd_recibido">USD Recibido</option>
@@ -255,11 +320,20 @@ export default function Treasury() {
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <input type="date" value={filters.from_date} onChange={(e) => setFilters({ ...filters, from_date: e.target.value })} placeholder="Desde" />
+            <label>Desde</label>
+            <input type="date" value={filters.from_date} onChange={(e) => { setFilters({ ...filters, from_date: e.target.value }); setPagination((p) => ({ ...p, page: 1 })); }} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <input type="date" value={filters.to_date} onChange={(e) => setFilters({ ...filters, to_date: e.target.value })} placeholder="Hasta" />
+            <label>Hasta</label>
+            <input type="date" value={filters.to_date} onChange={(e) => { setFilters({ ...filters, to_date: e.target.value }); setPagination((p) => ({ ...p, page: 1 })); }} />
           </div>
+          {(filters.status || filters.from_date || filters.to_date) && (
+            <div className="form-group" style={{ marginBottom: 0, display: 'flex', alignItems: 'flex-end' }}>
+              <button className="btn btn-sm" onClick={() => { setFilters({ status: '', from_date: '', to_date: '' }); setPagination((p) => ({ ...p, page: 1 })); }}>
+                <X size={14} /> Limpiar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -271,29 +345,32 @@ export default function Treasury() {
               <th>Fecha</th>
               <th>Proveedor</th>
               <th>VES Salida</th>
-              <th>USD Entrada</th>
+              <th>USD BCV</th>
+              <th>USD Reales</th>
               <th>Tasa Paralela</th>
               <th>Tasa BCV</th>
-              <th>Diferencial</th>
+              <th>Diferencial USD</th>
               <th>Estatus</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {ops.map((op) => {
-              const diff = parseFloat(op.exchange_difference || 0);
+              const { usdBcv, diffUsd } = calcOpFields(op);
+              const hasUsd = parseFloat(op.amount_usd) > 0;
               return (
                 <tr key={op.id}>
                   <td>{fmtDate(op.operation_date)}</td>
                   <td>{op.supplier_name || '-'}</td>
                   <td style={{ fontFamily: 'monospace', color: 'var(--danger)' }}>{fmtNum(op.amount_ves)}</td>
-                  <td style={{ fontFamily: 'monospace', color: op.amount_usd ? 'var(--success)' : 'var(--gray-500)' }}>
-                    {op.amount_usd ? fmtNum(op.amount_usd) : 'Pendiente'}
+                  <td style={{ fontFamily: 'monospace', color: 'var(--gray-700)' }}>{usdBcv > 0 ? fmtNum(usdBcv) : '-'}</td>
+                  <td style={{ fontFamily: 'monospace', color: hasUsd ? 'var(--success)' : 'var(--gray-400)', fontWeight: hasUsd ? 600 : 400 }}>
+                    {hasUsd ? fmtNum(op.amount_usd) : 'Pendiente'}
                   </td>
-                  <td style={{ fontFamily: 'monospace' }}>{op.parallel_rate || '-'}</td>
-                  <td style={{ fontFamily: 'monospace' }}>{op.bcv_rate || '-'}</td>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 600, color: diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--gray-500)' }}>
-                    {diff !== 0 ? `${diff > 0 ? '+' : ''}${fmtNum(diff)}` : '-'}
+                  <td style={{ fontFamily: 'monospace' }}>{fmtRate(op.parallel_rate)}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{fmtRate(op.bcv_rate)}</td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: diffUsd > 0.01 ? 'var(--success)' : diffUsd < -0.01 ? 'var(--danger)' : 'var(--gray-400)' }}>
+                    {hasUsd ? `${diffUsd > 0 ? '+' : ''}${fmtNum(diffUsd)}` : '-'}
                   </td>
                   <td><span className={`badge ${statusBadge[op.status]}`}>{statusLabel[op.status]}</span></td>
                   <td>
@@ -317,7 +394,7 @@ export default function Treasury() {
                 </tr>
               );
             })}
-            {!ops.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>{loading ? 'Cargando...' : 'No hay operaciones'}</td></tr>}
+            {!ops.length && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>{loading ? 'Cargando...' : 'No hay operaciones'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -333,33 +410,53 @@ export default function Treasury() {
             <div style={{ padding: '0.75rem', background: 'var(--gray-50)', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>
               <div><strong>Fecha:</strong> {fmtDate(receiveOp.operation_date)}</div>
               <div><strong>VES Enviado:</strong> {fmtNum(receiveOp.amount_ves)}</div>
-              <div><strong>Tasa BCV:</strong> {receiveOp.bcv_rate || 'No registrada'}</div>
+              <div><strong>Tasa BCV:</strong> {fmtRate(receiveOp.bcv_rate)}</div>
+              {receiveOp.bcv_rate && <div><strong>USD Equivalente BCV:</strong> {fmtNum(parseFloat(receiveOp.amount_ves) / parseFloat(receiveOp.bcv_rate))} USD</div>}
               {receiveOp.supplier_name && <div><strong>Proveedor:</strong> {receiveOp.supplier_name}</div>}
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
-              Contabilización: {receiveForm.destination_type === 'caja_usd' ? 'Caja USD' : 'Banco USD'} (D) / Préstamos Accionista (C)
-            </p>
+
             {receiveError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{receiveError}</div>}
             <form onSubmit={handleReceive}>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Monto USD Recibido *</label>
-                  <input type="number" step="0.01" value={receiveForm.amount_usd} onChange={(e) => setReceiveForm({ ...receiveForm, amount_usd: e.target.value })} required />
+                  <label>USD Realmente Recibidos *</label>
+                  <input type="number" step="0.01" value={receiveForm.amount_usd} onChange={(e) => setReceiveForm({ ...receiveForm, amount_usd: e.target.value })} required placeholder="Dólares que llegaron" />
                 </div>
                 <div className="form-group">
                   <label>Tasa Paralela (VES/USD) *</label>
                   <input type="number" step="0.000001" value={receiveForm.parallel_rate} onChange={(e) => setReceiveForm({ ...receiveForm, parallel_rate: e.target.value })} required placeholder="Tasa real de compra" />
                 </div>
               </div>
-              {receiveForm.parallel_rate && receiveForm.amount_usd && (
-                <div style={{ padding: '0.5rem 0.75rem', background: '#f0f9ff', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  <strong>Costo real:</strong> {fmtNum(receiveForm.amount_usd * receiveForm.parallel_rate)} VES |
-                  <strong> VES enviados:</strong> {fmtNum(receiveOp.amount_ves)} |
-                  {receiveOp.bcv_rate && (<> <strong> Diferencial vs BCV:</strong> <span style={{ color: (receiveOp.bcv_rate - receiveForm.parallel_rate) * receiveForm.amount_usd >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                    {fmtNum((receiveOp.bcv_rate - receiveForm.parallel_rate) * receiveForm.amount_usd)} VES
-                  </span></>)}
-                </div>
-              )}
+
+              {/* Live preview of the calculation */}
+              {(() => {
+                const p = previewCalc();
+                if (!p) return null;
+                return (
+                  <div style={{ padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem', border: '2px solid', borderColor: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)', background: p.diffUsd >= 0 ? '#f0fdf4' : '#fef2f2' }}>
+                    <div style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                      <strong>Costo real:</strong> {fmtNum(p.usd)} USD x {fmtRate(p.parallel)} = {fmtNum(p.costReal)} VES
+                    </div>
+                    {p.bcv > 0 && (
+                      <>
+                        <div style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                          <strong>USD equiv. BCV:</strong> {fmtNum(p.ves)} VES / {fmtRate(p.bcv)} = {fmtNum(p.usdBcv)} USD
+                        </div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                          {p.diffUsd >= 0 ? 'GANANCIA' : 'PÉRDIDA'}: {p.diffUsd >= 0 ? '+' : ''}{fmtNum(p.diffUsd)} USD
+                        </div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginTop: '0.25rem' }}>
+                          {p.diffUsd >= 0
+                            ? `Recibiste ${fmtNum(p.usd)} USD pero a BCV solo equivalían ${fmtNum(p.usdBcv)} USD`
+                            : `A tasa BCV debías recibir ${fmtNum(p.usdBcv)} USD pero solo llegaron ${fmtNum(p.usd)} USD`
+                          }
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="form-group">
                 <label>Destino</label>
                 <select value={receiveForm.destination_type} onChange={(e) => setReceiveForm({ ...receiveForm, destination_type: e.target.value })}>
@@ -389,24 +486,63 @@ export default function Treasury() {
               <div><strong>Estatus:</strong> <span className={`badge ${statusBadge[detail.status]}`}>{statusLabel[detail.status]}</span></div>
               {detail.supplier_name && <div><strong>Proveedor:</strong> {detail.supplier_name}</div>}
             </div>
-            <div className="form-row" style={{ marginTop: '0.75rem' }}>
-              <div><strong>VES Salida:</strong> <span style={{ color: 'var(--danger)', fontFamily: 'monospace' }}>{fmtNum(detail.amount_ves)}</span></div>
-              <div><strong>USD Entrada:</strong> <span style={{ color: detail.amount_usd ? 'var(--success)' : 'var(--gray-500)', fontFamily: 'monospace' }}>{detail.amount_usd ? fmtNum(detail.amount_usd) : 'Pendiente'}</span></div>
-              <div><strong>Tasa Paralela:</strong> {detail.parallel_rate || '-'}</div>
-              <div><strong>Tasa BCV:</strong> {detail.bcv_rate || '-'}</div>
+
+            {/* Financial summary */}
+            <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--gray-50)', borderRadius: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.9rem' }}>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>VES Salida</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 600, color: 'var(--danger)' }}>{fmtNum(detail.amount_ves)}</div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Tasa BCV</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 600 }}>{fmtRate(detail.bcv_rate)}</div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>USD Equiv. BCV</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 600, color: 'var(--gray-700)' }}>{detail.usd_equivalent_bcv ? fmtNum(detail.usd_equivalent_bcv) : '-'}</div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Tasa Paralela</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 600 }}>{fmtRate(detail.parallel_rate)}</div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>USD Reales</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 600, color: parseFloat(detail.amount_usd) > 0 ? 'var(--success)' : 'var(--gray-400)' }}>
+                    {parseFloat(detail.amount_usd) > 0 ? fmtNum(detail.amount_usd) : 'Pendiente'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Destino</div>
+                  <div style={{ fontSize: '0.9rem' }}>{detail.destination_type === 'caja_usd' ? 'Caja USD' : detail.destination_type === 'banco_usd' ? 'Banco USD' : '-'}</div>
+                </div>
+              </div>
             </div>
-            {detail.exchange_difference != null && parseFloat(detail.exchange_difference) !== 0 && (
-              <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '6px', background: parseFloat(detail.exchange_difference) >= 0 ? '#dcfce7' : '#fee2e2' }}>
-                <strong>Diferencial Cambiario:</strong>{' '}
-                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: parseFloat(detail.exchange_difference) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                  {parseFloat(detail.exchange_difference) >= 0 ? '+' : ''}{fmtNum(detail.exchange_difference)} VES
-                </span>
-                {parseFloat(detail.exchange_difference) >= 0
-                  ? <span style={{ fontSize: '0.82rem', marginLeft: '0.5rem' }}>(Ganancia: se compró más barato que BCV)</span>
-                  : <span style={{ fontSize: '0.82rem', marginLeft: '0.5rem' }}>(Pérdida: se compró más caro que BCV)</span>
-                }
+
+            {/* Exchange difference result */}
+            {parseFloat(detail.amount_usd) > 0 && detail.usd_equivalent_bcv > 0 && (
+              <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '8px', border: '2px solid', borderColor: detail.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)', background: detail.diff_usd >= 0 ? '#f0fdf4' : '#fef2f2' }}>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--gray-500)', marginBottom: '0.25rem' }}>Resultado de la operación</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {detail.diff_usd >= 0 ? <TrendingUp size={24} color="var(--success)" /> : <TrendingDown size={24} color="var(--danger)" />}
+                  <span style={{ fontWeight: 700, fontSize: '1.3rem', color: detail.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {detail.diff_usd >= 0 ? '+' : ''}{fmtNum(detail.diff_usd)} USD
+                  </span>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                    ({fmtNum(parseFloat(detail.exchange_difference))} VES)
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginTop: '0.5rem' }}>
+                  Enviaste {fmtNum(detail.amount_ves)} VES que a BCV ({fmtRate(detail.bcv_rate)}) equivalen a {fmtNum(detail.usd_equivalent_bcv)} USD.
+                  Compraste {fmtNum(detail.amount_usd)} USD a tasa paralela de {fmtRate(detail.parallel_rate)}.
+                  {detail.diff_usd < 0
+                    ? ` Perdiste ${fmtNum(Math.abs(detail.diff_usd))} USD por la diferencia de tasas.`
+                    : ` Ganaste ${fmtNum(detail.diff_usd)} USD respecto a la tasa oficial.`
+                  }
+                </div>
               </div>
             )}
+
             {detail.description && <div style={{ marginTop: '0.75rem' }}><strong>Descripción:</strong> {detail.description}</div>}
             {detail.notes && <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--gray-500)' }}><strong>Notas:</strong> {detail.notes}</div>}
 
@@ -416,7 +552,7 @@ export default function Treasury() {
                 <strong style={{ fontSize: '0.85rem' }}>Asientos Contables Internos:</strong>
                 <table style={{ marginTop: '0.5rem' }}>
                   <thead>
-                    <tr><th>Cuenta</th><th>Débito</th><th>Crédito</th><th>Moneda</th><th>Descripción</th></tr>
+                    <tr><th>Cuenta</th><th>Débito</th><th>Crédito</th><th>Moneda</th><th>Detalle</th></tr>
                   </thead>
                   <tbody>
                     {detail.ledger.map((l) => (
@@ -425,7 +561,7 @@ export default function Treasury() {
                         <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'debito' ? fmtNum(l.amount) : ''}</td>
                         <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'credito' ? fmtNum(l.amount) : ''}</td>
                         <td>{l.currency}</td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--gray-500)' }}>{l.description}</td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>{l.description}</td>
                       </tr>
                     ))}
                   </tbody>

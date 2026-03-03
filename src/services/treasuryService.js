@@ -43,7 +43,19 @@ async function createOperation(data, userId, ip) {
 
 /**
  * Receive USD - Step 2: USD arrives → Banco/Caja USD vs Préstamos Accionista
- * Also calculates exchange difference
+ *
+ * Exchange difference calculation (the core logic):
+ * - Company sent amount_ves VES to buy dollars
+ * - At BCV rate, those VES = amount_ves / bcv_rate USD (theoretical)
+ * - At parallel rate, they actually got amount_usd USD
+ * - Difference in USD = amount_usd - (amount_ves / bcv_rate)
+ *   Negative = loss (parallel more expensive), Positive = gain
+ * - Difference in VES = diff_usd * bcv_rate
+ *
+ * Example: Sent 52,000 VES, BCV=52, Parallel=65
+ *   USD at BCV: 52,000/52 = 1,000 USD (what client paid)
+ *   USD at Parallel: 52,000/65 = 800 USD (what we got)
+ *   Loss: 800-1000 = -200 USD = -10,400 VES
  */
 async function receiveUsd(operationId, data, userId, ip) {
   const { amount_usd, parallel_rate, destination_type, destination_bank_account_id } = data;
@@ -57,20 +69,24 @@ async function receiveUsd(operationId, data, userId, ip) {
   if (operation.status === 'anulada') throw new AppError('Operación anulada', 400);
   if (operation.status === 'completada') throw new AppError('Operación ya completada', 400);
 
-  // Calculate exchange difference
-  // What the USD cost in VES at parallel rate vs what they'd cost at BCV
-  const costAtParallel = round2(amount_usd * parallel_rate);
-  const bcvRate = operation.bcv_rate || parallel_rate;
-  const costAtBcv = round2(amount_usd * bcvRate);
-  const exchangeDiff = round2(costAtBcv - costAtParallel);
-  // Positive = gain (bought cheaper than BCV), Negative = loss (bought more expensive)
+  const bcvRate = parseFloat(operation.bcv_rate) || parseFloat(parallel_rate);
+  const amountVes = parseFloat(operation.amount_ves);
+  const amountUsd = parseFloat(amount_usd);
+  const parallelRateNum = parseFloat(parallel_rate);
+
+  // What the VES would buy at BCV rate (theoretical USD)
+  const usdAtBcv = amountVes / bcvRate;
+  // Difference in USD (negative = loss)
+  const diffUsd = round2(amountUsd - usdAtBcv);
+  // Difference in VES
+  const diffVes = round2(diffUsd * bcvRate);
 
   const [updated] = await db('treasury_operations').where({ id: operationId }).update({
-    amount_usd: round2(amount_usd),
-    parallel_rate,
+    amount_usd: round2(amountUsd),
+    parallel_rate: parallelRateNum,
     destination_type: destination_type || 'banco_usd',
     destination_bank_account_id: destination_bank_account_id || null,
-    exchange_difference: exchangeDiff,
+    exchange_difference: diffVes,
     status: 'usd_recibido',
     updated_at: new Date(),
   }).returning('*');
@@ -82,18 +98,19 @@ async function receiveUsd(operationId, data, userId, ip) {
   const prestAcc = accounts.find((a) => a.code === 'PREST_ACC');
 
   const ledgerEntries = [
-    { operation_id: operationId, account_id: destAcc.id, movement_type: 'debito', amount: round2(amount_usd), currency: 'USD', description: `Ingreso USD (tasa paralela: ${parallel_rate})`, movement_date: operation.operation_date },
-    { operation_id: operationId, account_id: prestAcc.id, movement_type: 'credito', amount: round2(operation.amount_ves), currency: 'VES', description: 'Liquidación préstamo accionista', movement_date: operation.operation_date },
+    { operation_id: operationId, account_id: destAcc.id, movement_type: 'debito', amount: round2(amountUsd), currency: 'USD', description: `Ingreso ${round2(amountUsd)} USD a tasa paralela ${parallelRateNum}`, movement_date: operation.operation_date },
+    { operation_id: operationId, account_id: prestAcc.id, movement_type: 'credito', amount: round2(amountVes), currency: 'VES', description: 'Liquidación préstamo accionista', movement_date: operation.operation_date },
   ];
 
-  // Record exchange difference
-  if (exchangeDiff !== 0) {
-    const diffAcc = accounts.find((a) => a.code === (exchangeDiff > 0 ? 'GAN_CAMB' : 'PERD_CAMB'));
+  // Record exchange difference as gain or loss
+  if (diffVes !== 0) {
+    const isGain = diffVes > 0;
+    const diffAcc = accounts.find((a) => a.code === (isGain ? 'GAN_CAMB' : 'PERD_CAMB'));
     ledgerEntries.push({
       operation_id: operationId, account_id: diffAcc.id,
-      movement_type: exchangeDiff > 0 ? 'credito' : 'debito',
-      amount: Math.abs(exchangeDiff), currency: 'VES',
-      description: `Diferencial cambiario: BCV ${bcvRate} vs Paralelo ${parallel_rate}`,
+      movement_type: isGain ? 'credito' : 'debito',
+      amount: Math.abs(diffVes), currency: 'VES',
+      description: `${isGain ? 'Ganancia' : 'Pérdida'} cambiaria: ${round2(diffUsd)} USD (BCV ${bcvRate} vs Paralelo ${parallelRateNum})`,
       movement_date: operation.operation_date,
     });
   }
@@ -147,9 +164,9 @@ async function listOperations({ status, from_date, to_date, page = 1, limit = 20
     .leftJoin('users', 'treasury_operations.created_by', 'users.id')
     .select('treasury_operations.*', 'users.full_name as created_by_name');
 
-  if (status) query.where('treasury_operations.status', status);
-  if (from_date) query.where('treasury_operations.operation_date', '>=', from_date);
-  if (to_date) query.where('treasury_operations.operation_date', '<=', to_date);
+  if (status && status.trim()) query.where('treasury_operations.status', status.trim());
+  if (from_date && from_date.trim()) query.where('treasury_operations.operation_date', '>=', from_date.trim());
+  if (to_date && to_date.trim()) query.where('treasury_operations.operation_date', '<=', to_date.trim());
 
   const [{ count }] = await query.clone().count();
   const data = await query.orderBy('treasury_operations.operation_date', 'desc').limit(limit).offset((page - 1) * limit);
@@ -175,7 +192,19 @@ async function getOperationById(id) {
     .select('treasury_ledger.*', 'internal_accounts.name as account_name', 'internal_accounts.code as account_code')
     .orderBy('treasury_ledger.created_at');
 
-  return { ...operation, ledger };
+  // Calculate derived USD fields for the response
+  const bcvRate = parseFloat(operation.bcv_rate) || 0;
+  const amountVes = parseFloat(operation.amount_ves) || 0;
+  const amountUsd = parseFloat(operation.amount_usd) || 0;
+  const usdAtBcv = bcvRate > 0 ? round2(amountVes / bcvRate) : 0;
+  const diffUsd = amountUsd > 0 ? round2(amountUsd - usdAtBcv) : 0;
+
+  return {
+    ...operation,
+    usd_equivalent_bcv: usdAtBcv,
+    diff_usd: diffUsd,
+    ledger,
+  };
 }
 
 /**
@@ -184,8 +213,10 @@ async function getOperationById(id) {
 async function getMonthlySummary(period) {
   // period = 'MM/YYYY'
   const [month, year] = period.split('/');
-  const startDate = `${year}-${month}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // last day of month
+  if (!month || !year) throw new AppError('Formato de período inválido, use MM/YYYY', 400);
+
+  const startDate = `${year}-${month.padStart(2, '0')}-01`;
+  const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
 
   const operations = await db('treasury_operations')
     .where('operation_date', '>=', startDate)
@@ -195,9 +226,36 @@ async function getMonthlySummary(period) {
 
   const totalVes = operations.reduce((s, o) => s + parseFloat(o.amount_ves || 0), 0);
   const totalUsd = operations.reduce((s, o) => s + parseFloat(o.amount_usd || 0), 0);
-  const totalDiff = operations.reduce((s, o) => s + parseFloat(o.exchange_difference || 0), 0);
-  const gains = operations.filter((o) => parseFloat(o.exchange_difference || 0) > 0);
-  const losses = operations.filter((o) => parseFloat(o.exchange_difference || 0) < 0);
+  const totalDiffVes = operations.reduce((s, o) => s + parseFloat(o.exchange_difference || 0), 0);
+
+  // Calculate total USD equivalent at BCV for all operations
+  let totalUsdAtBcv = 0;
+  const enriched = operations.map((o) => {
+    const bcv = parseFloat(o.bcv_rate) || 0;
+    const ves = parseFloat(o.amount_ves) || 0;
+    const usd = parseFloat(o.amount_usd) || 0;
+    const usdBcv = bcv > 0 ? round2(ves / bcv) : 0;
+    const diffUsd = usd > 0 ? round2(usd - usdBcv) : 0;
+    totalUsdAtBcv += usdBcv;
+    return { ...o, usd_equivalent_bcv: usdBcv, diff_usd: diffUsd };
+  });
+
+  const totalDiffUsd = round2(totalUsd - totalUsdAtBcv);
+
+  // Separate gains and losses
+  const completedOps = enriched.filter((o) => parseFloat(o.amount_usd || 0) > 0);
+  const gains = completedOps.filter((o) => o.diff_usd > 0);
+  const losses = completedOps.filter((o) => o.diff_usd < 0);
+
+  // Average rates
+  const opsWithParallel = operations.filter((o) => parseFloat(o.parallel_rate) > 0);
+  const avgParallel = opsWithParallel.length
+    ? round2(opsWithParallel.reduce((s, o) => s + parseFloat(o.parallel_rate), 0) / opsWithParallel.length)
+    : 0;
+  const opsWithBcv = operations.filter((o) => parseFloat(o.bcv_rate) > 0);
+  const avgBcv = opsWithBcv.length
+    ? round2(opsWithBcv.reduce((s, o) => s + parseFloat(o.bcv_rate), 0) / opsWithBcv.length)
+    : 0;
 
   // Account balances for the period
   const ledgerSummary = await db('treasury_ledger')
@@ -210,21 +268,26 @@ async function getMonthlySummary(period) {
     .select(
       'internal_accounts.code',
       'internal_accounts.name',
-      db.raw('SUM(CASE WHEN treasury_ledger.movement_type = \'debito\' THEN treasury_ledger.amount ELSE 0 END) as total_debito'),
-      db.raw('SUM(CASE WHEN treasury_ledger.movement_type = \'credito\' THEN treasury_ledger.amount ELSE 0 END) as total_credito'),
+      db.raw("SUM(CASE WHEN treasury_ledger.movement_type = 'debito' THEN treasury_ledger.amount ELSE 0 END) as total_debito"),
+      db.raw("SUM(CASE WHEN treasury_ledger.movement_type = 'credito' THEN treasury_ledger.amount ELSE 0 END) as total_credito"),
     );
 
   return {
     period,
+    start_date: startDate,
+    end_date: endDate,
     operations_count: operations.length,
     total_ves_out: round2(totalVes),
     total_usd_in: round2(totalUsd),
-    avg_parallel_rate: operations.length ? round2(totalVes / (totalUsd || 1)) : 0,
-    net_exchange_difference: round2(totalDiff),
-    total_gains: round2(gains.reduce((s, o) => s + parseFloat(o.exchange_difference || 0), 0)),
-    total_losses: round2(Math.abs(losses.reduce((s, o) => s + parseFloat(o.exchange_difference || 0), 0))),
+    total_usd_equivalent_bcv: round2(totalUsdAtBcv),
+    diff_usd: totalDiffUsd,
+    diff_ves: round2(totalDiffVes),
+    avg_parallel_rate: avgParallel,
+    avg_bcv_rate: avgBcv,
+    total_gains_usd: round2(gains.reduce((s, o) => s + o.diff_usd, 0)),
+    total_losses_usd: round2(Math.abs(losses.reduce((s, o) => s + o.diff_usd, 0))),
     account_balances: ledgerSummary,
-    operations,
+    operations: enriched,
   };
 }
 
