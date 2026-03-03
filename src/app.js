@@ -45,6 +45,7 @@ app.use('/api/v1/config', require('./routes/config'));
 app.use('/api/v1/reports', require('./routes/reports'));
 app.use('/api/v1/webhooks', require('./routes/webhooks'));
 app.use('/api/v1/dashboard', require('./routes/dashboard'));
+app.use('/api/v1/treasury', require('./routes/treasury'));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

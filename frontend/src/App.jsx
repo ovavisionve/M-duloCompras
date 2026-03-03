@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, Users, CreditCard, BookOpen,
-  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell
+  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell, Lock
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Suppliers from './pages/Suppliers';
@@ -15,6 +15,7 @@ import Banking from './pages/Banking';
 import ExchangeRates from './pages/ExchangeRates';
 import Configuration from './pages/Configuration';
 import Reports from './pages/Reports';
+import Treasury from './pages/Treasury';
 import Login from './pages/Login';
 
 function ProtectedRoute({ children }) {
@@ -71,6 +72,11 @@ function Sidebar() {
           <Landmark size={18} /> Conciliación
         </NavLink>
 
+        <div className="sidebar-section">Interno</div>
+        <NavLink to="/treasury" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <Lock size={18} /> Tesorería
+        </NavLink>
+
         <div className="sidebar-section">Sistema</div>
         <NavLink to="/reports" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <BarChart3 size={18} /> Reportes
@@ -116,6 +122,7 @@ export default function App() {
                 <Route path="/payments" element={<Payments />} />
                 <Route path="/purchase-book" element={<PurchaseBook />} />
                 <Route path="/banking" element={<Banking />} />
+                <Route path="/treasury" element={<Treasury />} />
                 <Route path="/exchange-rates" element={<ExchangeRates />} />
                 <Route path="/config" element={<Configuration />} />
                 <Route path="/reports" element={<Reports />} />

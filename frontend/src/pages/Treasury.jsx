@@ -1,0 +1,440 @@
+import React, { useState, useEffect } from 'react';
+import { Lock, Plus, DollarSign, ArrowDownRight, ArrowUpRight, CheckCircle, XCircle, Eye, X, TrendingUp, TrendingDown } from 'lucide-react';
+import api from '../api';
+
+const statusBadge = { pendiente: 'badge-yellow', usd_recibido: 'badge-blue', completada: 'badge-green', anulada: 'badge-red' };
+const statusLabel = { pendiente: 'VES Enviado', usd_recibido: 'USD Recibido', completada: 'Completada', anulada: 'Anulada' };
+
+const fmtDate = (d) => {
+  if (!d) return '';
+  const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
+};
+const fmtNum = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 });
+
+export default function Treasury() {
+  const [ops, setOps] = useState([]);
+  const [filters, setFilters] = useState({ status: '', from_date: '', to_date: '' });
+  const [pagination, setPagination] = useState({ page: 1, total: 0 });
+  const [loading, setLoading] = useState(true);
+
+  // Summary
+  const now = new Date();
+  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  const [summaryPeriod, setSummaryPeriod] = useState(defaultPeriod);
+  const [summary, setSummary] = useState(null);
+  const [showSummary, setShowSummary] = useState(false);
+
+  // Create form
+  const [showForm, setShowForm] = useState(false);
+  const today = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState({ operation_date: today, amount_ves: '', bcv_rate: '', description: '', supplier_name: '' });
+  const [formError, setFormError] = useState('');
+
+  // Receive USD modal
+  const [receiveOp, setReceiveOp] = useState(null);
+  const [receiveForm, setReceiveForm] = useState({ amount_usd: '', parallel_rate: '', destination_type: 'banco_usd' });
+  const [receiveError, setReceiveError] = useState('');
+
+  // Detail modal
+  const [detail, setDetail] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/treasury', { params: { ...filters, page: pagination.page, limit: 20 } })
+      .then((res) => { setOps(res.data.data); setPagination((p) => ({ ...p, total: res.data.pagination?.total || 0 })); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [filters, pagination.page]);
+
+  // Auto fetch BCV rate for form
+  useEffect(() => {
+    if (showForm) {
+      api.get('/exchange-rates/today').then((r) => {
+        if (r.data.data) setForm((f) => ({ ...f, bcv_rate: r.data.data.rate }));
+      }).catch(() => {});
+    }
+  }, [showForm]);
+
+  const loadSummary = () => {
+    api.get('/treasury/summary', { params: { period: summaryPeriod } })
+      .then((r) => { setSummary(r.data.data); setShowSummary(true); })
+      .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar resumen'));
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    if (!form.amount_ves || parseFloat(form.amount_ves) <= 0) { setFormError('Ingrese monto VES válido'); return; }
+    try {
+      await api.post('/treasury', { ...form, amount_ves: parseFloat(form.amount_ves), bcv_rate: parseFloat(form.bcv_rate) || null });
+      setShowForm(false);
+      setForm({ operation_date: today, amount_ves: '', bcv_rate: '', description: '', supplier_name: '' });
+      load();
+    } catch (err) { setFormError(err.response?.data?.error?.message || 'Error al crear operación'); }
+  };
+
+  const openReceive = (op) => {
+    setReceiveError('');
+    setReceiveOp(op);
+    // Pre-calculate expected USD if BCV rate exists
+    const expectedUsd = op.bcv_rate ? (parseFloat(op.amount_ves) / parseFloat(op.bcv_rate)).toFixed(2) : '';
+    setReceiveForm({ amount_usd: expectedUsd, parallel_rate: '', destination_type: 'banco_usd' });
+  };
+
+  const handleReceive = async (e) => {
+    e.preventDefault();
+    setReceiveError('');
+    if (!receiveForm.amount_usd || !receiveForm.parallel_rate) { setReceiveError('Monto USD y tasa paralela son requeridos'); return; }
+    try {
+      await api.patch(`/treasury/${receiveOp.id}/receive-usd`, {
+        amount_usd: parseFloat(receiveForm.amount_usd),
+        parallel_rate: parseFloat(receiveForm.parallel_rate),
+        destination_type: receiveForm.destination_type,
+      });
+      setReceiveOp(null);
+      load();
+    } catch (err) { setReceiveError(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const completeOp = async (id) => {
+    if (!window.confirm('Marcar operación como completada?')) return;
+    try { await api.patch(`/treasury/${id}/complete`, {}); load(); }
+    catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const voidOp = async (id) => {
+    const reason = window.prompt('Motivo de anulación:');
+    if (!reason) return;
+    try { await api.post(`/treasury/${id}/void`, { reason }); load(); }
+    catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const viewDetail = async (id) => {
+    try {
+      const r = await api.get(`/treasury/${id}`);
+      setDetail(r.data.data);
+    } catch (err) { alert('Error al cargar detalle'); }
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Lock size={22} /> Tesorería Interna
+        </h1>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
+            <TrendingUp size={16} /> Resumen Mensual
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+            <Plus size={16} /> Nueva Operación
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: '#fef3c7', border: '1px solid #fde047', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#92400e' }}>
+        <strong>Uso interno:</strong> Este módulo registra operaciones de compra de divisas a tasa paralela. No se refleja en reportes fiscales (SENIAT). Los movimientos se registran contablemente como Préstamos Accionistas.
+      </div>
+
+      {/* ── Monthly Summary ── */}
+      {showSummary && (
+        <div className="card" style={{ marginBottom: '1rem', border: '2px solid var(--info)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3>Resumen Mensual</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input value={summaryPeriod} onChange={(e) => setSummaryPeriod(e.target.value)} placeholder="MM/YYYY" style={{ width: '120px', padding: '0.3rem 0.5rem', border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '0.85rem' }} />
+              <button className="btn btn-sm btn-primary" onClick={loadSummary}>Consultar</button>
+              <button className="btn btn-sm" onClick={() => setShowSummary(false)}><X size={14} /></button>
+            </div>
+          </div>
+          {summary && (
+            <>
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="label">Operaciones</div>
+                  <div className="value">{summary.operations_count}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="label">Total VES Salida</div>
+                  <div className="value" style={{ color: 'var(--danger)' }}>{fmtNum(summary.total_ves_out)}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="label">Total USD Entrada</div>
+                  <div className="value" style={{ color: 'var(--success)' }}>{fmtNum(summary.total_usd_in)}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="label">Tasa Promedio</div>
+                  <div className="value">{fmtNum(summary.avg_parallel_rate)}</div>
+                </div>
+              </div>
+              <div className="stats-grid" style={{ marginBottom: 0 }}>
+                <div className="stat-card" style={{ borderLeft: `4px solid ${summary.net_exchange_difference >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+                  <div className="label">Diferencial Cambiario Neto</div>
+                  <div className="value" style={{ color: summary.net_exchange_difference >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {summary.net_exchange_difference >= 0 ? '+' : ''}{fmtNum(summary.net_exchange_difference)} VES
+                  </div>
+                  <div className="sub">Ganancia: +{fmtNum(summary.total_gains)} | Pérdida: -{fmtNum(summary.total_losses)}</div>
+                </div>
+              </div>
+              {summary.account_balances?.length > 0 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <strong style={{ fontSize: '0.85rem' }}>Movimientos por Cuenta:</strong>
+                  <table style={{ marginTop: '0.5rem' }}>
+                    <thead><tr><th>Cuenta</th><th>Débitos</th><th>Créditos</th></tr></thead>
+                    <tbody>
+                      {summary.account_balances.map((a) => (
+                        <tr key={a.code}>
+                          <td>{a.name}</td>
+                          <td style={{ fontFamily: 'monospace' }}>{fmtNum(a.total_debito)}</td>
+                          <td style={{ fontFamily: 'monospace' }}>{fmtNum(a.total_credito)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Create Form ── */}
+      {showForm && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <h3 style={{ marginBottom: '0.75rem' }}>Paso 1: Registrar Salida de VES</h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+            Registre la salida de bolívares para compra de divisas. Se contabiliza como: Préstamos Accionista (D) / Banco VES (C)
+          </p>
+          {formError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{formError}</div>}
+          <form onSubmit={handleCreate}>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Fecha *</label>
+                <input type="date" value={form.operation_date} onChange={(e) => setForm({ ...form, operation_date: e.target.value })} required />
+              </div>
+              <div className="form-group">
+                <label>Monto VES *</label>
+                <input type="number" step="0.01" value={form.amount_ves} onChange={(e) => setForm({ ...form, amount_ves: e.target.value })} required placeholder="Monto en bolívares" />
+              </div>
+              <div className="form-group">
+                <label>Tasa BCV del día</label>
+                <input type="number" step="0.000001" value={form.bcv_rate} onChange={(e) => setForm({ ...form, bcv_rate: e.target.value })} placeholder="Se carga automática" />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Proveedor / Destino</label>
+                <input value={form.supplier_name} onChange={(e) => setForm({ ...form, supplier_name: e.target.value })} placeholder="Ej: Pago a Amadeus" />
+              </div>
+              <div className="form-group">
+                <label>Descripción</label>
+                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Detalle de la operación" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="submit" className="btn btn-primary"><ArrowDownRight size={16} /> Registrar Salida VES</button>
+              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Filters ── */}
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="form-row">
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+              <option value="">Todos los estatus</option>
+              <option value="pendiente">VES Enviado</option>
+              <option value="usd_recibido">USD Recibido</option>
+              <option value="completada">Completada</option>
+              <option value="anulada">Anulada</option>
+            </select>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <input type="date" value={filters.from_date} onChange={(e) => setFilters({ ...filters, from_date: e.target.value })} placeholder="Desde" />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <input type="date" value={filters.to_date} onChange={(e) => setFilters({ ...filters, to_date: e.target.value })} placeholder="Hasta" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Operations Table ── */}
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Proveedor</th>
+              <th>VES Salida</th>
+              <th>USD Entrada</th>
+              <th>Tasa Paralela</th>
+              <th>Tasa BCV</th>
+              <th>Diferencial</th>
+              <th>Estatus</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ops.map((op) => {
+              const diff = parseFloat(op.exchange_difference || 0);
+              return (
+                <tr key={op.id}>
+                  <td>{fmtDate(op.operation_date)}</td>
+                  <td>{op.supplier_name || '-'}</td>
+                  <td style={{ fontFamily: 'monospace', color: 'var(--danger)' }}>{fmtNum(op.amount_ves)}</td>
+                  <td style={{ fontFamily: 'monospace', color: op.amount_usd ? 'var(--success)' : 'var(--gray-500)' }}>
+                    {op.amount_usd ? fmtNum(op.amount_usd) : 'Pendiente'}
+                  </td>
+                  <td style={{ fontFamily: 'monospace' }}>{op.parallel_rate || '-'}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{op.bcv_rate || '-'}</td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 600, color: diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--gray-500)' }}>
+                    {diff !== 0 ? `${diff > 0 ? '+' : ''}${fmtNum(diff)}` : '-'}
+                  </td>
+                  <td><span className={`badge ${statusBadge[op.status]}`}>{statusLabel[op.status]}</span></td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <button className="btn btn-sm" onClick={() => viewDetail(op.id)} title="Ver detalle"><Eye size={14} /></button>
+                      {op.status === 'pendiente' && (
+                        <button className="btn btn-sm btn-primary" onClick={() => openReceive(op)} title="Registrar USD recibido">
+                          <ArrowUpRight size={14} />
+                        </button>
+                      )}
+                      {op.status === 'usd_recibido' && (
+                        <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff', borderColor: 'var(--success)' }} onClick={() => completeOp(op.id)} title="Completar">
+                          <CheckCircle size={14} />
+                        </button>
+                      )}
+                      {!['anulada', 'completada'].includes(op.status) && (
+                        <button className="btn btn-sm btn-danger" onClick={() => voidOp(op.id)} title="Anular"><XCircle size={14} /></button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!ops.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>{loading ? 'Cargando...' : 'No hay operaciones'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Receive USD Modal ── */}
+      {receiveOp && (
+        <div className="modal-overlay" onClick={() => setReceiveOp(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem' }}>Paso 2: Registrar USD Recibidos</h3>
+              <button className="btn btn-sm" onClick={() => setReceiveOp(null)}><X size={16} /></button>
+            </div>
+            <div style={{ padding: '0.75rem', background: 'var(--gray-50)', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>
+              <div><strong>Fecha:</strong> {fmtDate(receiveOp.operation_date)}</div>
+              <div><strong>VES Enviado:</strong> {fmtNum(receiveOp.amount_ves)}</div>
+              <div><strong>Tasa BCV:</strong> {receiveOp.bcv_rate || 'No registrada'}</div>
+              {receiveOp.supplier_name && <div><strong>Proveedor:</strong> {receiveOp.supplier_name}</div>}
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+              Contabilización: {receiveForm.destination_type === 'caja_usd' ? 'Caja USD' : 'Banco USD'} (D) / Préstamos Accionista (C)
+            </p>
+            {receiveError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{receiveError}</div>}
+            <form onSubmit={handleReceive}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Monto USD Recibido *</label>
+                  <input type="number" step="0.01" value={receiveForm.amount_usd} onChange={(e) => setReceiveForm({ ...receiveForm, amount_usd: e.target.value })} required />
+                </div>
+                <div className="form-group">
+                  <label>Tasa Paralela (VES/USD) *</label>
+                  <input type="number" step="0.000001" value={receiveForm.parallel_rate} onChange={(e) => setReceiveForm({ ...receiveForm, parallel_rate: e.target.value })} required placeholder="Tasa real de compra" />
+                </div>
+              </div>
+              {receiveForm.parallel_rate && receiveForm.amount_usd && (
+                <div style={{ padding: '0.5rem 0.75rem', background: '#f0f9ff', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  <strong>Costo real:</strong> {fmtNum(receiveForm.amount_usd * receiveForm.parallel_rate)} VES |
+                  <strong> VES enviados:</strong> {fmtNum(receiveOp.amount_ves)} |
+                  {receiveOp.bcv_rate && (<> <strong> Diferencial vs BCV:</strong> <span style={{ color: (receiveOp.bcv_rate - receiveForm.parallel_rate) * receiveForm.amount_usd >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                    {fmtNum((receiveOp.bcv_rate - receiveForm.parallel_rate) * receiveForm.amount_usd)} VES
+                  </span></>)}
+                </div>
+              )}
+              <div className="form-group">
+                <label>Destino</label>
+                <select value={receiveForm.destination_type} onChange={(e) => setReceiveForm({ ...receiveForm, destination_type: e.target.value })}>
+                  <option value="banco_usd">Banco USD</option>
+                  <option value="caja_usd">Caja USD</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <button type="submit" className="btn btn-primary"><ArrowUpRight size={16} /> Registrar USD</button>
+                <button type="button" className="btn" onClick={() => setReceiveOp(null)}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Detail Modal ── */}
+      {detail && (
+        <div className="modal-overlay" onClick={() => setDetail(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem' }}>Detalle de Operación</h3>
+              <button className="btn btn-sm" onClick={() => setDetail(null)}><X size={16} /></button>
+            </div>
+            <div className="form-row">
+              <div><strong>Fecha:</strong> {fmtDate(detail.operation_date)}</div>
+              <div><strong>Estatus:</strong> <span className={`badge ${statusBadge[detail.status]}`}>{statusLabel[detail.status]}</span></div>
+              {detail.supplier_name && <div><strong>Proveedor:</strong> {detail.supplier_name}</div>}
+            </div>
+            <div className="form-row" style={{ marginTop: '0.75rem' }}>
+              <div><strong>VES Salida:</strong> <span style={{ color: 'var(--danger)', fontFamily: 'monospace' }}>{fmtNum(detail.amount_ves)}</span></div>
+              <div><strong>USD Entrada:</strong> <span style={{ color: detail.amount_usd ? 'var(--success)' : 'var(--gray-500)', fontFamily: 'monospace' }}>{detail.amount_usd ? fmtNum(detail.amount_usd) : 'Pendiente'}</span></div>
+              <div><strong>Tasa Paralela:</strong> {detail.parallel_rate || '-'}</div>
+              <div><strong>Tasa BCV:</strong> {detail.bcv_rate || '-'}</div>
+            </div>
+            {detail.exchange_difference != null && parseFloat(detail.exchange_difference) !== 0 && (
+              <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '6px', background: parseFloat(detail.exchange_difference) >= 0 ? '#dcfce7' : '#fee2e2' }}>
+                <strong>Diferencial Cambiario:</strong>{' '}
+                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: parseFloat(detail.exchange_difference) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {parseFloat(detail.exchange_difference) >= 0 ? '+' : ''}{fmtNum(detail.exchange_difference)} VES
+                </span>
+                {parseFloat(detail.exchange_difference) >= 0
+                  ? <span style={{ fontSize: '0.82rem', marginLeft: '0.5rem' }}>(Ganancia: se compró más barato que BCV)</span>
+                  : <span style={{ fontSize: '0.82rem', marginLeft: '0.5rem' }}>(Pérdida: se compró más caro que BCV)</span>
+                }
+              </div>
+            )}
+            {detail.description && <div style={{ marginTop: '0.75rem' }}><strong>Descripción:</strong> {detail.description}</div>}
+            {detail.notes && <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--gray-500)' }}><strong>Notas:</strong> {detail.notes}</div>}
+
+            {/* Ledger entries */}
+            {detail.ledger?.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong style={{ fontSize: '0.85rem' }}>Asientos Contables Internos:</strong>
+                <table style={{ marginTop: '0.5rem' }}>
+                  <thead>
+                    <tr><th>Cuenta</th><th>Débito</th><th>Crédito</th><th>Moneda</th><th>Descripción</th></tr>
+                  </thead>
+                  <tbody>
+                    {detail.ledger.map((l) => (
+                      <tr key={l.id}>
+                        <td>{l.account_name}</td>
+                        <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'debito' ? fmtNum(l.amount) : ''}</td>
+                        <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'credito' ? fmtNum(l.amount) : ''}</td>
+                        <td>{l.currency}</td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--gray-500)' }}>{l.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
