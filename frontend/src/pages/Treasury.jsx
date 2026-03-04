@@ -8,7 +8,7 @@ const statusLabel = { completada: 'Completada', anulada: 'Anulada', pendiente: '
 const purchaseTypes = {
   efectivo: 'Efectivo USD', zelle: 'Zelle', paypal: 'PayPal',
   binance: 'Binance (USDT)', euro: 'Euros', cripto_otro: 'Cripto Otro',
-  transferencia_usd: 'Transferencia USD',
+  transferencia_usd: 'Transferencia USD', boleto_aereo: 'Boleto Aéreo',
 };
 
 const fmtDate = (d) => {
@@ -258,36 +258,55 @@ export default function Treasury() {
               </div>
             </div>
 
-            {/* ── Live comparison ── */}
+            {/* ── Live comparison (always visible) ── */}
             {(() => {
               const p = calcPreview();
-              if (!p) return null;
+              if (!p) {
+                return (
+                  <div style={{ padding: '1rem', borderRadius: '8px', marginBottom: '1rem', border: '2px dashed var(--gray-300)', background: '#f9fafb', textAlign: 'center' }}>
+                    <TrendingUp size={28} color="var(--gray-400)" style={{ margin: '0 auto 0.5rem' }} />
+                    <div style={{ color: 'var(--gray-500)', fontSize: '0.85rem', fontWeight: 500 }}>Comparativa en Tiempo Real</div>
+                    <div style={{ color: 'var(--gray-400)', fontSize: '0.78rem', marginTop: '0.25rem' }}>Ingresa el monto VES y la tasa BCV para ver la comparación entre BCV y la tasa de compra.</div>
+                  </div>
+                );
+              }
               return (
                 <div style={{ padding: '1rem', borderRadius: '8px', marginBottom: '1rem', border: '2px solid', borderColor: p.hasPurchase ? (p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)') : 'var(--info)', background: p.hasPurchase ? (p.diffUsd >= 0 ? '#f0fdf4' : '#fef2f2') : '#f0f9ff' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.9rem' }}>
-                    <div>
-                      <div style={{ color: 'var(--gray-500)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Si compraras a tasa BCV ({fmtRate(p.bcv)})</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: 'var(--gray-700)' }}>{fmtNum(p.usdBcv)} USD</div>
+                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 600, color: 'var(--gray-500)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>Comparativa en Tiempo Real</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: p.hasPurchase ? '1fr auto 1fr' : '1fr', gap: '0.75rem', fontSize: '0.9rem', alignItems: 'center' }}>
+                    <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.7)', borderRadius: '6px' }}>
+                      <div style={{ color: 'var(--gray-500)', fontSize: '0.72rem', textTransform: 'uppercase' }}>A tasa BCV ({fmtRate(p.bcv)})</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--gray-700)' }}>{fmtNum(p.usdBcv)} USD</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>Valor "oficial" que reportarías</div>
                     </div>
                     {p.hasPurchase && (
-                      <div>
-                        <div style={{ color: 'var(--gray-500)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Comprando a tasa {fmtRate(p.pRate)} ({purchaseTypes[form.purchase_type] || ''})</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(p.usdReal)} USD</div>
-                      </div>
+                      <>
+                        <div style={{ fontSize: '1.5rem', color: 'var(--gray-400)', fontWeight: 300 }}>vs</div>
+                        <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.7)', borderRadius: '6px' }}>
+                          <div style={{ color: 'var(--gray-500)', fontSize: '0.72rem', textTransform: 'uppercase' }}>A {purchaseTypes[form.purchase_type] || 'tasa paralela'} ({fmtRate(p.pRate)})</div>
+                          <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(p.usdReal)} USD</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>Lo que realmente compras</div>
+                        </div>
+                      </>
                     )}
                   </div>
                   {p.hasPurchase && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {p.diffUsd >= 0 ? <TrendingUp size={20} color="var(--success)" /> : <TrendingDown size={20} color="var(--danger)" />}
-                        <span style={{ fontWeight: 700, fontSize: '1.2rem', color: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                        {p.diffUsd >= 0 ? <TrendingUp size={22} color="var(--success)" /> : <TrendingDown size={22} color="var(--danger)" />}
+                        <span style={{ fontWeight: 700, fontSize: '1.3rem', color: p.diffUsd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                           {p.diffUsd >= 0 ? 'GANANCIA' : 'PÉRDIDA'}: {p.diffUsd >= 0 ? '+' : ''}{fmtNum(p.diffUsd)} USD
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginTop: '0.25rem' }}>
-                        Con {fmtNum(p.ves)} VES: a BCV serían {fmtNum(p.usdBcv)} USD, pero a {purchaseTypes[form.purchase_type] || 'tasa paralela'} ({fmtRate(p.pRate)}) {p.diffUsd >= 0 ? 'obtienes' : 'solo consigues'} {fmtNum(p.usdReal)} USD.
+                      <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginTop: '0.35rem', lineHeight: '1.4' }}>
+                        Con {fmtNum(p.ves)} VES: a BCV ({fmtRate(p.bcv)}) serían {fmtNum(p.usdBcv)} USD, pero a {purchaseTypes[form.purchase_type] || 'tasa paralela'} ({fmtRate(p.pRate)}) {p.diffUsd >= 0 ? 'obtienes' : 'solo consigues'} {fmtNum(p.usdReal)} USD.
                         {p.diffUsd < 0 ? ` Pierdes ${fmtNum(Math.abs(p.diffUsd))} USD por la diferencia de tasas.` : ` Ganas ${fmtNum(p.diffUsd)} USD respecto a BCV.`}
                       </div>
+                    </div>
+                  )}
+                  {!p.hasPurchase && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--info)', fontStyle: 'italic' }}>
+                      Ingresa la tasa de compra ({purchaseTypes[form.purchase_type] || 'paralela'}) para ver la comparación y el diferencial.
                     </div>
                   )}
                 </div>
@@ -473,26 +492,78 @@ export default function Treasury() {
 
             {detail.notes && <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--gray-500)' }}><strong>Notas:</strong> {detail.notes}</div>}
 
-            {/* Ledger */}
-            {detail.ledger?.length > 0 && (
-              <div style={{ marginTop: '1rem' }}>
-                <strong style={{ fontSize: '0.85rem' }}>Asientos Contables:</strong>
-                <table style={{ marginTop: '0.5rem' }}>
-                  <thead><tr><th>Cuenta</th><th>Débito</th><th>Crédito</th><th>Moneda</th><th>Detalle</th></tr></thead>
-                  <tbody>
-                    {detail.ledger.map((l) => (
-                      <tr key={l.id}>
-                        <td>{l.account_name}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'debito' ? fmtNum(l.amount) : ''}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{l.movement_type === 'credito' ? fmtNum(l.amount) : ''}</td>
-                        <td>{l.currency}</td>
-                        <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>{l.description}</td>
+            {/* Ledger with narrative */}
+            {detail.ledger?.length > 0 && (() => {
+              const ves = parseFloat(detail.amount_ves) || 0;
+              const usd = parseFloat(detail.amount_usd) || 0;
+              const diffU = parseFloat(detail.diff_usd) || 0;
+              const bcvR = parseFloat(detail.bcv_rate) || 0;
+              const pR = parseFloat(detail.purchase_rate || detail.parallel_rate) || 0;
+              const typeLabel = purchaseTypes[detail.purchase_type] || 'tasa paralela';
+              const isLoss = diffU < 0;
+              const usdBcvCalc = bcvR > 0 ? ves / bcvR : 0;
+
+              return (
+                <div style={{ marginTop: '1rem' }}>
+                  <strong style={{ fontSize: '0.85rem' }}>Asientos Contables (Partida Doble):</strong>
+
+                  {/* Narrative explanation */}
+                  <div style={{ margin: '0.5rem 0', padding: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '0.82rem', color: '#78350f', lineHeight: '1.5' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>Cómo leer estos asientos:</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div>
+                        <span style={{ display: 'inline-block', background: '#dbeafe', padding: '0 4px', borderRadius: '3px', fontWeight: 600, fontSize: '0.75rem' }}>PASO 1 - Salida VES</span>{' '}
+                        El accionista "presta" {fmtNum(ves)} VES a la empresa. Se debita <em>Préstamos Accionistas</em> (deuda) y se acredita <em>Banco VES</em> (el dinero sale del banco).
+                      </div>
+                      <div>
+                        <span style={{ display: 'inline-block', background: '#dcfce7', padding: '0 4px', borderRadius: '3px', fontWeight: 600, fontSize: '0.75rem' }}>PASO 2 - Entrada USD</span>{' '}
+                        Se compran {fmtNum(usd)} USD a {typeLabel} (tasa {fmtRate(pR)}). Se debita <em>{detail.destination_type === 'caja_usd' ? 'Caja USD' : 'Banco USD'}</em> (dólares entran) y se acredita <em>Préstamos Accionistas</em> (se "cancela" el préstamo).
+                      </div>
+                      {diffU !== 0 && (
+                        <div>
+                          <span style={{ display: 'inline-block', background: isLoss ? '#fee2e2' : '#dcfce7', padding: '0 4px', borderRadius: '3px', fontWeight: 600, fontSize: '0.75rem' }}>PASO 3 - Diferencial</span>{' '}
+                          {isLoss
+                            ? `A BCV (${fmtRate(bcvR)}) los ${fmtNum(ves)} VES serían ${fmtNum(usdBcvCalc)} USD, pero a ${typeLabel} solo se consiguieron ${fmtNum(usd)} USD. Pérdida de ${fmtNum(Math.abs(diffU))} USD registrada en Pérdida Cambiaria.`
+                            : `A BCV (${fmtRate(bcvR)}) los ${fmtNum(ves)} VES serían ${fmtNum(usdBcvCalc)} USD, pero a ${typeLabel} se consiguieron ${fmtNum(usd)} USD. Ganancia de ${fmtNum(diffU)} USD registrada en Ganancia Cambiaria.`
+                          }
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <table style={{ marginTop: '0.5rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30px' }}>#</th>
+                        <th>Cuenta</th>
+                        <th>Débito</th>
+                        <th>Crédito</th>
+                        <th>Moneda</th>
+                        <th>Concepto</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {detail.ledger.map((l, idx) => {
+                        const isDebit = l.movement_type === 'debito';
+                        const bgColor = l.account_code === 'PERD_CAMB' ? '#fef2f2'
+                          : l.account_code === 'GAN_CAMB' ? '#f0fdf4'
+                          : idx < 2 ? '#eff6ff' : idx < 4 ? '#f0fdf4' : 'transparent';
+                        return (
+                          <tr key={l.id} style={{ background: bgColor }}>
+                            <td style={{ color: 'var(--gray-400)', fontSize: '0.75rem' }}>{idx + 1}</td>
+                            <td style={{ fontWeight: 500 }}>{l.account_name}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: isDebit ? 600 : 400 }}>{isDebit ? fmtNum(l.amount) : ''}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: !isDebit ? 600 : 400 }}>{!isDebit ? fmtNum(l.amount) : ''}</td>
+                            <td><span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>{l.currency}</span></td>
+                            <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>{l.description}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
