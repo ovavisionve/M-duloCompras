@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw } from 'lucide-react';
+import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw, Download, BarChart3 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, Line, Legend, ReferenceLine } from 'recharts';
 import api from '../api';
+
+const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 const statusBadge = { completada: 'badge-green', anulada: 'badge-red' };
 const statusLabel = { completada: 'Completada', anulada: 'Anulada', pendiente: 'Pendiente', usd_recibido: 'USD Recibido' };
@@ -44,6 +47,10 @@ export default function Treasury() {
   const [revaluation, setRevaluation] = useState(null);
   const [revalDates, setRevalDates] = useState({ from: '', to: '' });
   const [repairMsg, setRepairMsg] = useState('');
+
+  // ─── Dashboard state ───
+  const [dashData, setDashData] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
 
   // Summary
   const now = new Date();
@@ -98,6 +105,34 @@ export default function Treasury() {
     api.get('/treasury/summary', { params: { period: summaryPeriod } })
       .then((r) => { setSummary(r.data.data); setShowSummary(true); })
       .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar resumen'));
+  };
+
+  // ─── Dashboard loader ───
+  const loadDashboard = () => {
+    setDashLoading(true);
+    api.get('/treasury/dashboard')
+      .then((r) => setDashData(r.data.data))
+      .catch(console.error)
+      .finally(() => setDashLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'dashboard') loadDashboard();
+  }, [activeTab]);
+
+  // ─── Download helpers ───
+  const downloadFile = (url, filename) => {
+    const token = localStorage.getItem('token');
+    fetch(`/api/v1${url}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch(() => alert('Error al descargar'));
   };
 
   // ─── Cash Position / Flows loaders ───
@@ -251,10 +286,16 @@ export default function Treasury() {
         </h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn" onClick={resetDemo} title="Limpiar toda la data y crear 10 movimientos de ejemplo" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
-            <XCircle size={16} /> Resetear Demo
+            <XCircle size={16} /> Reset Demo
           </button>
           {activeTab === 'divisas' && (
             <>
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/pdf', 'compra_divisas.pdf')} title="Descargar PDF">
+                <Download size={16} /> PDF
+              </button>
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/excel', 'compra_divisas.xlsx')} title="Descargar Excel">
+                <Download size={16} /> Excel
+              </button>
               <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
                 <TrendingUp size={16} /> Resumen
               </button>
@@ -265,6 +306,12 @@ export default function Treasury() {
           )}
           {activeTab === 'posicion' && (
             <>
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/pdf', 'posicion_cambiaria.pdf')} title="Descargar PDF">
+                <Download size={16} /> PDF
+              </button>
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/excel', 'posicion_cambiaria.xlsx')} title="Descargar Excel">
+                <Download size={16} /> Excel
+              </button>
               <button className="btn" onClick={repairCashFlows} title="Sincronizar compras de divisas que no generaron movimiento de caja">
                 <RefreshCw size={16} /> Sincronizar
               </button>
@@ -282,19 +329,171 @@ export default function Treasury() {
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1rem', borderBottom: '2px solid var(--gray-200)' }}>
-        <button
-          onClick={() => setActiveTab('divisas')}
-          style={{ padding: '0.6rem 1.2rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === 'divisas' ? 600 : 400, color: activeTab === 'divisas' ? 'var(--primary)' : 'var(--gray-500)', borderBottom: activeTab === 'divisas' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-        >
-          <TrendingUp size={16} /> Compra de Divisas
-        </button>
-        <button
-          onClick={() => setActiveTab('posicion')}
-          style={{ padding: '0.6rem 1.2rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === 'posicion' ? 600 : 400, color: activeTab === 'posicion' ? 'var(--primary)' : 'var(--gray-500)', borderBottom: activeTab === 'posicion' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-        >
-          <Wallet size={16} /> Posición Cambiaria
-        </button>
+        {[
+          { key: 'dashboard', icon: <BarChart3 size={16} />, label: 'Dashboard' },
+          { key: 'divisas', icon: <TrendingUp size={16} />, label: 'Compra de Divisas' },
+          { key: 'posicion', icon: <Wallet size={16} />, label: 'Posición Cambiaria' },
+        ].map((tab) => (
+          <button key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{ padding: '0.6rem 1.2rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === tab.key ? 600 : 400, color: activeTab === tab.key ? 'var(--primary)' : 'var(--gray-500)', borderBottom: activeTab === tab.key ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
       </div>
+
+      {/* ══════════ TAB: DASHBOARD ══════════ */}
+      {activeTab === 'dashboard' && <>
+        {dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-500)' }}>Cargando dashboard...</div>}
+        {dashData && <>
+          {/* KPIs */}
+          <div className="stats-grid">
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+              <div className="label">Operaciones del Mes</div>
+              <div className="value">{dashData.kpis.operations_count}</div>
+              <div className="sub">Período: {dashData.period}</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--danger)' }}>
+              <div className="label">VES Invertidos</div>
+              <div className="value" style={{ color: 'var(--danger)', fontSize: '1.1rem' }}>{fmtNum(dashData.kpis.total_ves)}</div>
+              <div className="sub">Bolívares utilizados en compras</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--success)' }}>
+              <div className="label">USD Comprados</div>
+              <div className="value" style={{ color: 'var(--success)', fontSize: '1.1rem' }}>{fmtNum(dashData.kpis.total_usd)}</div>
+              <div className="sub">Dólares reales obtenidos</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: `4px solid ${dashData.kpis.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+              <div className="label">Resultado Cambiario</div>
+              <div className="value" style={{ color: dashData.kpis.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.1rem' }}>
+                {dashData.kpis.diff_usd >= 0 ? '+' : ''}{fmtNum(dashData.kpis.diff_usd)} USD
+              </div>
+              <div className="sub">{dashData.kpis.diff_usd >= 0 ? 'Ganancia' : 'Pérdida'} por diferencial de tasas</div>
+            </div>
+          </div>
+
+          {/* Rate cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Tasa BCV Hoy</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--primary)' }}>{fmtRate(dashData.kpis.today_bcv_rate)}</div>
+            </div>
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Tasa Prom. Compra</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--warning)' }}>{fmtRate(dashData.kpis.avg_purchase_rate)}</div>
+            </div>
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Spread Promedio</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--danger)' }}>{fmtNum(dashData.kpis.spread_pct)}%</div>
+            </div>
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Saldo VES Posición</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: dashData.kpis.balance_ves >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(dashData.kpis.balance_ves)}</div>
+            </div>
+          </div>
+
+          {/* Charts Row 1 */}
+          <div className="charts-grid">
+            <div className="chart-card">
+              <h3>Compras Diarias (VES)</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={dashData.charts.daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="label" fontSize={11} />
+                  <YAxis fontSize={11} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
+                  <Tooltip formatter={(v) => fmtNum(v)} labelFormatter={(l) => `Fecha: ${l}`} />
+                  <Bar dataKey="ves" fill="#2563eb" radius={[4, 4, 0, 0]} name="VES" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="chart-card">
+              <h3>Distribución por Tipo</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie data={dashData.charts.by_type} dataKey="ves" nameKey="type" cx="50%" cy="50%" outerRadius={95} innerRadius={45} paddingAngle={2}
+                    label={({ type, percent }) => `${purchaseTypes[type] || type} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
+                    {dashData.charts.by_type.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => fmtNum(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Charts Row 2 */}
+          <div className="charts-grid">
+            <div className="chart-card">
+              <h3>Flujo de Caja VES (Posición Cambiaria)</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart data={dashData.charts.cash_flow}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="label" fontSize={11} />
+                  <YAxis fontSize={11} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
+                  <Tooltip formatter={(v) => fmtNum(v)} />
+                  <Legend verticalAlign="top" height={30} />
+                  <Bar dataKey="ingresos" fill="#16a34a" name="Ingresos" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="egresos" fill="#dc2626" name="Egresos" radius={[3, 3, 0, 0]} />
+                  <Line type="monotone" dataKey="saldo" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} name="Saldo Acum." />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="chart-card">
+              <h3>Resultado Cambiario por Operación (USD)</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={dashData.charts.diff_scatter}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" fontSize={10} tickFormatter={(d) => d ? `${d.split('-')[2]}/${d.split('-')[1]}` : ''} />
+                  <YAxis fontSize={11} />
+                  <Tooltip formatter={(v, name) => [fmtNum(v), name === 'diff_usd' ? 'Dif. USD' : name]} labelFormatter={(d) => `Fecha: ${d}`} />
+                  <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
+                  <Bar dataKey="diff_usd" name="Dif. USD" radius={[3, 3, 0, 0]}>
+                    {dashData.charts.diff_scatter.map((entry, i) => (
+                      <Cell key={i} fill={entry.diff_usd >= 0 ? '#16a34a' : '#dc2626'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Top Suppliers */}
+          <div className="charts-grid">
+            <div className="chart-card">
+              <h3>Top 5 Proveedores / Destinos</h3>
+              {dashData.top_suppliers.map((s, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid var(--gray-200)' }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: '0.88rem' }}>{s.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray-400)' }}>{s.count} operación(es)</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--danger)' }}>{fmtNum(s.ves)} VES</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--success)' }}>{fmtNum(s.usd)} USD</div>
+                  </div>
+                </div>
+              ))}
+              {!dashData.top_suppliers.length && <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem', padding: '1rem 0' }}>Sin operaciones en este período</div>}
+            </div>
+
+            <div className="chart-card">
+              <h3>USD Comprados por Día</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={dashData.charts.daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="label" fontSize={11} />
+                  <YAxis fontSize={11} />
+                  <Tooltip formatter={(v) => fmtNum(v)} />
+                  <Area type="monotone" dataKey="usd" stroke="#16a34a" fill="#bbf7d0" strokeWidth={2} name="USD" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>}
+        {!dashData && !dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>No hay datos disponibles. Usa "Resetear Demo" para crear datos de ejemplo.</div>}
+      </>}
 
       {/* ══════════ TAB: COMPRA DE DIVISAS ══════════ */}
       {activeTab === 'divisas' && <>

@@ -296,6 +296,155 @@ async function getAccounts() {
   return db('internal_accounts').where({ is_active: true }).orderBy('code');
 }
 
+/**
+ * Dashboard data for interactive charts
+ */
+async function getDashboardData() {
+  // Current month operations
+  const now = new Date();
+  const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+  // Active operations (not voided)
+  const allOps = await db('treasury_operations')
+    .whereNot('status', 'anulada')
+    .orderBy('operation_date');
+
+  const monthOps = allOps.filter((o) => {
+    const d = typeof o.operation_date === 'string' ? o.operation_date : o.operation_date.toISOString().split('T')[0];
+    return d >= startOfMonth && d <= endOfMonth;
+  });
+
+  // --- KPIs ---
+  const totalVes = monthOps.reduce((s, o) => s + parseFloat(o.amount_ves || 0), 0);
+  const totalUsd = monthOps.reduce((s, o) => s + parseFloat(o.amount_usd || 0), 0);
+  const totalDiffUsd = monthOps.reduce((s, o) => s + parseFloat(o.diff_usd || 0), 0);
+
+  let todayBcv = 0;
+  try {
+    const rateData = await exchangeRateService.getTodayRate();
+    if (rateData) todayBcv = parseFloat(rateData.rate);
+  } catch (e) { /* */ }
+
+  // Cash position
+  const flows = await db('treasury_cash_flows').where({ status: 'activo' });
+  let balanceVes = 0;
+  flows.forEach((f) => {
+    const ves = parseFloat(f.amount_ves) || 0;
+    balanceVes += f.flow_type === 'ingreso' ? ves : -ves;
+  });
+
+  // --- Chart: VES by day (current month) ---
+  const dailyMap = {};
+  monthOps.forEach((o) => {
+    const d = typeof o.operation_date === 'string' ? o.operation_date : o.operation_date.toISOString().split('T')[0];
+    if (!dailyMap[d]) dailyMap[d] = { date: d, ves: 0, usd: 0, count: 0 };
+    dailyMap[d].ves += parseFloat(o.amount_ves || 0);
+    dailyMap[d].usd += parseFloat(o.amount_usd || 0);
+    dailyMap[d].count++;
+  });
+  const daily = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
+    ...d, ves: round2(d.ves), usd: round2(d.usd),
+    label: `${d.date.split('-')[2]}/${d.date.split('-')[1]}`,
+  }));
+
+  // --- Chart: by purchase type ---
+  const typeMap = {};
+  monthOps.forEach((o) => {
+    const t = o.purchase_type || 'otro';
+    if (!typeMap[t]) typeMap[t] = { type: t, ves: 0, usd: 0, count: 0 };
+    typeMap[t].ves += parseFloat(o.amount_ves || 0);
+    typeMap[t].usd += parseFloat(o.amount_usd || 0);
+    typeMap[t].count++;
+  });
+  const byType = Object.values(typeMap).map((d) => ({ ...d, ves: round2(d.ves), usd: round2(d.usd) }));
+
+  // --- Chart: cumulative cash flow ---
+  const flowsByDate = {};
+  flows.forEach((f) => {
+    const d = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+    if (d >= startOfMonth && d <= endOfMonth) {
+      if (!flowsByDate[d]) flowsByDate[d] = { date: d, ingresos: 0, egresos: 0 };
+      const ves = parseFloat(f.amount_ves) || 0;
+      if (f.flow_type === 'ingreso') flowsByDate[d].ingresos += ves;
+      else flowsByDate[d].egresos += ves;
+    }
+  });
+  const cashFlowDaily = Object.values(flowsByDate).sort((a, b) => a.date.localeCompare(b.date));
+  let cumBal = 0;
+  // Get starting balance (flows before this month)
+  flows.forEach((f) => {
+    const d = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+    if (d < startOfMonth) {
+      const ves = parseFloat(f.amount_ves) || 0;
+      cumBal += f.flow_type === 'ingreso' ? ves : -ves;
+    }
+  });
+  const cashFlowChart = cashFlowDaily.map((d) => {
+    cumBal += d.ingresos - d.egresos;
+    return {
+      ...d,
+      label: `${d.date.split('-')[2]}/${d.date.split('-')[1]}`,
+      ingresos: round2(d.ingresos),
+      egresos: round2(d.egresos),
+      saldo: round2(cumBal),
+    };
+  });
+
+  // --- Chart: diff USD per operation (gain/loss scatter) ---
+  const diffChart = monthOps.map((o) => ({
+    date: typeof o.operation_date === 'string' ? o.operation_date : o.operation_date.toISOString().split('T')[0],
+    diff_usd: parseFloat(o.diff_usd || 0),
+    amount_ves: parseFloat(o.amount_ves || 0),
+    type: o.purchase_type || 'otro',
+  }));
+
+  // --- Top suppliers ---
+  const supplierMap = {};
+  monthOps.forEach((o) => {
+    const name = o.supplier_name || 'Sin proveedor';
+    if (!supplierMap[name]) supplierMap[name] = { name, ves: 0, usd: 0, count: 0 };
+    supplierMap[name].ves += parseFloat(o.amount_ves || 0);
+    supplierMap[name].usd += parseFloat(o.amount_usd || 0);
+    supplierMap[name].count++;
+  });
+  const topSuppliers = Object.values(supplierMap)
+    .sort((a, b) => b.ves - a.ves)
+    .slice(0, 5)
+    .map((s) => ({ ...s, ves: round2(s.ves), usd: round2(s.usd) }));
+
+  // --- Average rates ---
+  const opsWithRate = monthOps.filter((o) => parseFloat(o.purchase_rate || o.parallel_rate) > 0);
+  const avgPurchase = opsWithRate.length
+    ? round2(opsWithRate.reduce((s, o) => s + parseFloat(o.purchase_rate || o.parallel_rate), 0) / opsWithRate.length) : 0;
+  const opsWithBcv = monthOps.filter((o) => parseFloat(o.bcv_rate) > 0);
+  const avgBcv = opsWithBcv.length
+    ? round2(opsWithBcv.reduce((s, o) => s + parseFloat(o.bcv_rate), 0) / opsWithBcv.length) : 0;
+
+  return {
+    period: `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
+    kpis: {
+      operations_count: monthOps.length,
+      total_ves: round2(totalVes),
+      total_usd: round2(totalUsd),
+      diff_usd: round2(totalDiffUsd),
+      balance_ves: round2(balanceVes),
+      balance_usd: todayBcv > 0 ? round2(balanceVes / todayBcv) : 0,
+      today_bcv_rate: todayBcv,
+      avg_purchase_rate: avgPurchase,
+      avg_bcv_rate: avgBcv,
+      spread_pct: avgBcv > 0 ? round2(((avgPurchase - avgBcv) / avgBcv) * 100) : 0,
+    },
+    charts: {
+      daily,
+      by_type: byType,
+      cash_flow: cashFlowChart,
+      diff_scatter: diffChart,
+    },
+    top_suppliers: topSuppliers,
+  };
+}
+
 // ─── Cash Flow / Posición Cambiaria ───
 
 /**
@@ -690,6 +839,7 @@ module.exports = {
   getOperationById,
   getMonthlySummary,
   getAccounts,
+  getDashboardData,
   recordCashFlow,
   getCashPosition,
   listCashFlows,
