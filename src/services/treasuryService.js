@@ -499,14 +499,15 @@ async function getRevaluationReport(fromDate, toDate) {
  * created before the transaction fix (orphaned operations).
  */
 async function repairMissingCashFlows(userId) {
+  // Find operations that have NO cash flow record at all (active or voided)
   const ops = await db('treasury_operations')
-    .where({ status: 'completada' })
-    .whereNotExists(
-      db('treasury_cash_flows')
-        .whereRaw('treasury_cash_flows.reference_id = treasury_operations.id')
-        .where({ reference_type: 'treasury_operation', status: 'activo' })
-    )
-    .select('*');
+    .leftJoin('treasury_cash_flows', function () {
+      this.on('treasury_cash_flows.reference_id', '=', 'treasury_operations.id')
+        .andOn('treasury_cash_flows.reference_type', '=', db.raw("'treasury_operation'"));
+    })
+    .whereNull('treasury_cash_flows.id')
+    .where('treasury_operations.status', 'completada')
+    .select('treasury_operations.*');
 
   if (!ops.length) return { repaired: 0, operations: [] };
 

@@ -78,7 +78,7 @@ router.post('/cash/flows/:id/void', authenticate, authorize('admin', 'tesorero')
 });
 
 // POST /treasury/cash/repair - Repair missing cash flows from old operations
-router.post('/cash/repair', authenticate, authorize('admin'), async (req, res, next) => {
+router.post('/cash/repair', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const data = await treasuryService.repairMissingCashFlows(req.user.id);
     res.json({ success: true, data });
