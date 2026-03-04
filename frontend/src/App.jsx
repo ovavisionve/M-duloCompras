@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, Users, CreditCard, BookOpen,
-  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell, Lock
+  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Suppliers from './pages/Suppliers';
@@ -36,7 +36,7 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        Comprar-IA
+        Comprar-<span onClick={() => navigate('/treasury')} style={{ cursor: 'default', userSelect: 'text' }}>IA</span>
         <small>Gestión Fiscal Inteligente</small>
       </div>
       <nav className="sidebar-nav">
@@ -70,11 +70,6 @@ function Sidebar() {
         <div className="sidebar-section">Bancos</div>
         <NavLink to="/banking" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <Landmark size={18} /> Conciliación
-        </NavLink>
-
-        <div className="sidebar-section">Interno</div>
-        <NavLink to="/treasury" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-          <Lock size={18} /> Tesorería
         </NavLink>
 
         <div className="sidebar-section">Sistema</div>
