@@ -32,6 +32,53 @@ router.get('/summary', authenticate, authorize('admin', 'tesorero'), async (req,
   } catch (err) { next(err); }
 });
 
+// ─── Cash Flow / Posición Cambiaria (MUST be before /:id) ───
+
+// GET /treasury/cash/position - Current cash position with revaluation
+router.get('/cash/position', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.getCashPosition();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// GET /treasury/cash/flows - List cash flow movements
+router.get('/cash/flows', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const result = await treasuryService.listCashFlows(req.query);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+// GET /treasury/cash/revaluation?from=&to= - Revaluation report
+router.get('/cash/revaluation', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    const data = await treasuryService.getRevaluationReport(from, to);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// POST /treasury/cash/flows - Record manual VES entry/exit
+router.post('/cash/flows', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.recordCashFlow(req.body, req.user.id, req.ip);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// POST /treasury/cash/flows/:id/void - Void cash flow entry
+router.post('/cash/flows/:id/void', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) throw new AppError('Motivo de anulación requerido', 400);
+    const data = await treasuryService.voidCashFlow(req.params.id, reason, req.user.id, req.ip);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ─── Treasury Operations ───
+
 // GET /treasury - List operations
 router.get('/', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
@@ -40,7 +87,7 @@ router.get('/', authenticate, authorize('admin', 'tesorero'), async (req, res, n
   } catch (err) { next(err); }
 });
 
-// GET /treasury/:id - Detail
+// GET /treasury/:id - Detail (must be after all named routes)
 router.get('/:id', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const data = await treasuryService.getOperationById(req.params.id);

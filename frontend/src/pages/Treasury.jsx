@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw } from 'lucide-react';
 import api from '../api';
 
 const statusBadge = { completada: 'badge-green', anulada: 'badge-red' };
@@ -20,6 +20,9 @@ const fmtNum = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDi
 const fmtRate = (n) => n ? Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '-';
 
 export default function Treasury() {
+  // Tab: 'divisas' or 'posicion'
+  const [activeTab, setActiveTab] = useState('divisas');
+
   const [ops, setOps] = useState([]);
   const [filters, setFilters] = useState({ status: '', from_date: '', to_date: '', purchase_type: '' });
   const [pagination, setPagination] = useState({ page: 1, total: 0 });
@@ -27,6 +30,19 @@ export default function Treasury() {
 
   // Suppliers
   const [suppliers, setSuppliers] = useState([]);
+
+  // ─── Cash Position state ───
+  const [cashPosition, setCashPosition] = useState(null);
+  const [cashFlows, setCashFlows] = useState([]);
+  const [cashFilters, setCashFilters] = useState({ flow_type: '', from_date: '', to_date: '' });
+  const [cashPagination, setCashPagination] = useState({ page: 1, total: 0 });
+  const [cashLoading, setCashLoading] = useState(false);
+  const [showCashForm, setShowCashForm] = useState(false);
+  const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', amount_ves: '', bcv_rate: '', description: '' });
+  const [cashFormError, setCashFormError] = useState('');
+  const [cashSubmitting, setCashSubmitting] = useState(false);
+  const [revaluation, setRevaluation] = useState(null);
+  const [revalDates, setRevalDates] = useState({ from: '', to: '' });
 
   // Summary
   const now = new Date();
@@ -81,6 +97,70 @@ export default function Treasury() {
     api.get('/treasury/summary', { params: { period: summaryPeriod } })
       .then((r) => { setSummary(r.data.data); setShowSummary(true); })
       .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar resumen'));
+  };
+
+  // ─── Cash Position / Flows loaders ───
+  const loadCashPosition = () => {
+    api.get('/treasury/cash/position')
+      .then((r) => setCashPosition(r.data.data))
+      .catch(console.error);
+  };
+
+  const loadCashFlows = () => {
+    setCashLoading(true);
+    const params = { page: cashPagination.page, limit: 20 };
+    if (cashFilters.flow_type) params.flow_type = cashFilters.flow_type;
+    if (cashFilters.from_date) params.from_date = cashFilters.from_date;
+    if (cashFilters.to_date) params.to_date = cashFilters.to_date;
+    api.get('/treasury/cash/flows', { params })
+      .then((r) => { setCashFlows(r.data.data); setCashPagination((p) => ({ ...p, total: r.data.pagination?.total || 0 })); })
+      .catch(console.error)
+      .finally(() => setCashLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'posicion') { loadCashPosition(); loadCashFlows(); }
+  }, [activeTab, cashFilters, cashPagination.page]);
+
+  // Auto fetch BCV for cash form
+  useEffect(() => {
+    if (showCashForm) {
+      api.get('/exchange-rates/today').then((r) => {
+        if (r.data.data) setCashForm((f) => ({ ...f, bcv_rate: String(r.data.data.rate) }));
+      }).catch(() => {});
+    }
+  }, [showCashForm]);
+
+  const handleCashCreate = async (e) => {
+    e.preventDefault();
+    setCashFormError('');
+    const ves = parseFloat(cashForm.amount_ves);
+    const bcv = parseFloat(cashForm.bcv_rate);
+    if (!ves || ves <= 0) { setCashFormError('Ingrese monto VES válido'); return; }
+    if (!bcv || bcv <= 0) { setCashFormError('La tasa BCV es requerida'); return; }
+    setCashSubmitting(true);
+    try {
+      await api.post('/treasury/cash/flows', { ...cashForm, amount_ves: ves, bcv_rate: bcv });
+      setShowCashForm(false);
+      setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', amount_ves: '', bcv_rate: '', description: '' });
+      loadCashPosition(); loadCashFlows();
+    } catch (err) {
+      setCashFormError(err.response?.data?.error?.message || 'Error al registrar movimiento');
+    } finally { setCashSubmitting(false); }
+  };
+
+  const voidCashFlow = async (id) => {
+    const reason = window.prompt('Motivo de anulación:');
+    if (!reason) return;
+    try { await api.post(`/treasury/cash/flows/${id}/void`, { reason }); loadCashPosition(); loadCashFlows(); }
+    catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const loadRevaluation = () => {
+    if (!revalDates.from || !revalDates.to) { alert('Seleccione fechas desde y hasta'); return; }
+    api.get('/treasury/cash/revaluation', { params: { from: revalDates.from, to: revalDates.to } })
+      .then((r) => setRevaluation(r.data.data))
+      .catch((err) => alert(err.response?.data?.error?.message || 'Error'));
   };
 
   // Live calculation preview
@@ -142,18 +222,46 @@ export default function Treasury() {
           <Lock size={22} /> Tesorería Interna
         </h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
-            <TrendingUp size={16} /> Resumen
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            <Plus size={16} /> Comprar Divisas
-          </button>
+          {activeTab === 'divisas' && (
+            <>
+              <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
+                <TrendingUp size={16} /> Resumen
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+                <Plus size={16} /> Comprar Divisas
+              </button>
+            </>
+          )}
+          {activeTab === 'posicion' && (
+            <button className="btn btn-primary" onClick={() => setShowCashForm(!showCashForm)}>
+              <Plus size={16} /> Registrar Movimiento
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{ background: '#fef3c7', border: '1px solid #fde047', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#92400e' }}>
-        <strong>Uso interno:</strong> Compra de divisas a tasa paralela. No visible en reportes SENIAT. Contabilizado como Préstamos Accionistas.
+        <strong>Uso interno:</strong> No visible en reportes SENIAT. Contabilizado como Préstamos Accionistas.
       </div>
+
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '1rem', borderBottom: '2px solid var(--gray-200)' }}>
+        <button
+          onClick={() => setActiveTab('divisas')}
+          style={{ padding: '0.6rem 1.2rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === 'divisas' ? 600 : 400, color: activeTab === 'divisas' ? 'var(--primary)' : 'var(--gray-500)', borderBottom: activeTab === 'divisas' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+        >
+          <TrendingUp size={16} /> Compra de Divisas
+        </button>
+        <button
+          onClick={() => setActiveTab('posicion')}
+          style={{ padding: '0.6rem 1.2rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === 'posicion' ? 600 : 400, color: activeTab === 'posicion' ? 'var(--primary)' : 'var(--gray-500)', borderBottom: activeTab === 'posicion' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+        >
+          <Wallet size={16} /> Posición Cambiaria
+        </button>
+      </div>
+
+      {/* ══════════ TAB: COMPRA DE DIVISAS ══════════ */}
+      {activeTab === 'divisas' && <>
 
       {/* ── Summary ── */}
       {showSummary && (
@@ -420,6 +528,260 @@ export default function Treasury() {
           </tbody>
         </table>
       </div>
+
+      </>}
+
+      {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
+      {activeTab === 'posicion' && <>
+
+        {/* ── Cash Position Dashboard ── */}
+        {cashPosition && (
+          <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+              <div className="label">Saldo VES</div>
+              <div className="value" style={{ color: cashPosition.balance_ves >= 0 ? 'var(--primary)' : 'var(--danger)' }}>
+                {fmtNum(cashPosition.balance_ves)}
+              </div>
+              <div className="sub">Bolívares en cuenta interna</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--info)' }}>
+              <div className="label">USD al Ingresar</div>
+              <div className="value" style={{ color: 'var(--gray-700)' }}>
+                {fmtNum(cashPosition.balance_usd_at_entry)}
+              </div>
+              <div className="sub">Valor USD al momento de cada entrada</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: '4px solid var(--success)' }}>
+              <div className="label">USD Hoy (BCV {fmtRate(cashPosition.today_bcv_rate)})</div>
+              <div className="value" style={{ color: 'var(--success)' }}>
+                {fmtNum(cashPosition.balance_usd_today)}
+              </div>
+              <div className="sub">Valor USD a tasa BCV de hoy</div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: `4px solid ${cashPosition.revaluation_usd >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+              <div className="label">Revalorización</div>
+              <div className="value" style={{ color: cashPosition.revaluation_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {cashPosition.revaluation_usd >= 0 ? '+' : ''}{fmtNum(cashPosition.revaluation_usd)} USD
+              </div>
+              <div className="sub">{cashPosition.revaluation_usd >= 0 ? 'Ganancia' : 'Pérdida'} vs valor de entrada</div>
+            </div>
+          </div>
+        )}
+
+        {cashPosition && (
+          <div className="card" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', fontSize: '0.82rem' }}>
+              <div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Total Ingresos VES</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--success)' }}>{fmtNum(cashPosition.total_ingresos_ves)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Total Egresos VES</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--danger)' }}>{fmtNum(cashPosition.total_egresos_ves)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>USD Ingresos (entrada)</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(cashPosition.total_ingresos_usd_entry)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Movimientos</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{cashPosition.movements_count}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Revaluation Report ── */}
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <RefreshCw size={14} /> Revalorización Histórica
+            </strong>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Desde</label>
+              <input type="date" value={revalDates.from} onChange={(e) => setRevalDates({ ...revalDates, from: e.target.value })} style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem' }} />
+              <label style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Hasta</label>
+              <input type="date" value={revalDates.to} onChange={(e) => setRevalDates({ ...revalDates, to: e.target.value })} style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem' }} />
+              <button className="btn btn-sm btn-primary" onClick={loadRevaluation}>Ver</button>
+            </div>
+          </div>
+          {revaluation && revaluation.snapshots?.length > 0 && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                {revaluation.first_snapshot && (
+                  <div style={{ flex: 1, padding: '0.5rem', background: '#f0f9ff', borderRadius: '6px', fontSize: '0.82rem' }}>
+                    <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Inicio ({fmtDate(revaluation.first_snapshot.date)})</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(revaluation.first_snapshot.balance_ves)} VES = {fmtNum(revaluation.first_snapshot.balance_usd)} USD</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>BCV: {fmtRate(revaluation.first_snapshot.bcv_rate)}</div>
+                  </div>
+                )}
+                {revaluation.last_snapshot && (
+                  <div style={{ flex: 1, padding: '0.5rem', background: revaluation.change_usd >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', fontSize: '0.82rem' }}>
+                    <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Fin ({fmtDate(revaluation.last_snapshot.date)})</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(revaluation.last_snapshot.balance_ves)} VES = {fmtNum(revaluation.last_snapshot.balance_usd)} USD</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>BCV: {fmtRate(revaluation.last_snapshot.bcv_rate)}</div>
+                  </div>
+                )}
+                <div style={{ flex: 1, padding: '0.5rem', background: revaluation.change_usd >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Cambio USD</div>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.1rem', color: revaluation.change_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {revaluation.change_usd >= 0 ? '+' : ''}{fmtNum(revaluation.change_usd)} USD
+                  </div>
+                </div>
+              </div>
+              <table style={{ fontSize: '0.82rem' }}>
+                <thead><tr><th>Fecha</th><th>Tasa BCV</th><th>Saldo VES</th><th>Equivalente USD</th></tr></thead>
+                <tbody>
+                  {revaluation.snapshots.map((s, i) => (
+                    <tr key={i}>
+                      <td>{fmtDate(s.date)}</td>
+                      <td style={{ fontFamily: 'monospace' }}>{fmtRate(s.bcv_rate)}</td>
+                      <td style={{ fontFamily: 'monospace' }}>{fmtNum(s.balance_ves)}</td>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(s.balance_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {revaluation && revaluation.snapshots?.length === 0 && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.82rem', color: 'var(--gray-500)' }}>No hay tasas BCV registradas en ese rango de fechas.</div>
+          )}
+        </div>
+
+        {/* ── Cash Flow Form ── */}
+        {showCashForm && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <h3 style={{ marginBottom: '0.75rem' }}>Registrar Movimiento VES</h3>
+            {cashFormError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{cashFormError}</div>}
+            <form onSubmit={handleCashCreate}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha *</label>
+                  <input type="date" value={cashForm.flow_date} onChange={(e) => setCashForm({ ...cashForm, flow_date: e.target.value })} required />
+                </div>
+                <div className="form-group">
+                  <label>Tipo *</label>
+                  <select value={cashForm.flow_type} onChange={(e) => setCashForm({ ...cashForm, flow_type: e.target.value })}>
+                    <option value="ingreso">Ingreso (VES entran)</option>
+                    <option value="egreso">Egreso (VES salen)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Monto VES *</label>
+                  <input type="number" step="0.01" value={cashForm.amount_ves} onChange={(e) => setCashForm({ ...cashForm, amount_ves: e.target.value })} required placeholder="Ej: 5000000" />
+                </div>
+                <div className="form-group">
+                  <label>Tasa BCV del día</label>
+                  <input type="number" step="0.000001" value={cashForm.bcv_rate} onChange={(e) => setCashForm({ ...cashForm, bcv_rate: e.target.value })} required style={{ background: '#f0f9ff' }} />
+                </div>
+              </div>
+              {/* Live USD equivalent */}
+              {parseFloat(cashForm.amount_ves) > 0 && parseFloat(cashForm.bcv_rate) > 0 && (
+                <div style={{ padding: '0.75rem', background: '#f0f9ff', border: '1px solid var(--info)', borderRadius: '8px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  {cashForm.flow_type === 'ingreso'
+                    ? <ArrowUpCircle size={24} color="var(--success)" />
+                    : <ArrowDownCircle size={24} color="var(--danger)" />
+                  }
+                  <div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>
+                      {cashForm.flow_type === 'ingreso' ? 'Entran' : 'Salen'} {fmtNum(parseFloat(cashForm.amount_ves))} VES
+                    </div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 700, color: cashForm.flow_type === 'ingreso' ? 'var(--success)' : 'var(--danger)' }}>
+                      = {fmtNum(parseFloat(cashForm.amount_ves) / parseFloat(cashForm.bcv_rate))} USD a BCV ({fmtRate(parseFloat(cashForm.bcv_rate))})
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Descripción</label>
+                  <input value={cashForm.description} onChange={(e) => setCashForm({ ...cashForm, description: e.target.value })} placeholder="Ej: Pago recibido de cliente X" />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button type="submit" className="btn btn-primary" disabled={cashSubmitting}>{cashSubmitting ? 'Registrando...' : 'Registrar'}</button>
+                <button type="button" className="btn" onClick={() => setShowCashForm(false)}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── Cash Flow Filters ── */}
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="form-row">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Tipo</label>
+              <select value={cashFilters.flow_type} onChange={(e) => { setCashFilters({ ...cashFilters, flow_type: e.target.value }); setCashPagination((p) => ({ ...p, page: 1 })); }}>
+                <option value="">Todos</option>
+                <option value="ingreso">Ingresos</option>
+                <option value="egreso">Egresos</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Desde</label>
+              <input type="date" value={cashFilters.from_date} onChange={(e) => { setCashFilters({ ...cashFilters, from_date: e.target.value }); setCashPagination((p) => ({ ...p, page: 1 })); }} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Hasta</label>
+              <input type="date" value={cashFilters.to_date} onChange={(e) => { setCashFilters({ ...cashFilters, to_date: e.target.value }); setCashPagination((p) => ({ ...p, page: 1 })); }} />
+            </div>
+            {(cashFilters.flow_type || cashFilters.from_date || cashFilters.to_date) && (
+              <div className="form-group" style={{ marginBottom: 0, display: 'flex', alignItems: 'flex-end' }}>
+                <button className="btn btn-sm" onClick={() => { setCashFilters({ flow_type: '', from_date: '', to_date: '' }); setCashPagination((p) => ({ ...p, page: 1 })); }}><X size={14} /> Limpiar</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Cash Flow Table ── */}
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>VES</th>
+                <th>USD (al ingresar)</th>
+                <th>Tasa BCV</th>
+                <th>USD (hoy)</th>
+                <th>Origen</th>
+                <th>Descripción</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cashFlows.map((f) => (
+                <tr key={f.id} style={f.status === 'anulado' ? { opacity: 0.5 } : {}}>
+                  <td>{fmtDate(f.flow_date)}</td>
+                  <td>
+                    <span className={`badge ${f.flow_type === 'ingreso' ? 'badge-green' : 'badge-red'}`}>
+                      {f.flow_type === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                    </span>
+                  </td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 600, color: f.flow_type === 'ingreso' ? 'var(--success)' : 'var(--danger)' }}>
+                    {f.flow_type === 'ingreso' ? '+' : '-'}{fmtNum(f.amount_ves)}
+                  </td>
+                  <td style={{ fontFamily: 'monospace', color: 'var(--gray-600)' }}>{fmtNum(f.usd_equivalent)}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{fmtRate(f.bcv_rate)}</td>
+                  <td style={{ fontFamily: 'monospace', color: 'var(--info)' }}>{f.usd_today ? fmtNum(f.usd_today) : '-'}</td>
+                  <td style={{ fontSize: '0.78rem' }}>
+                    {f.reference_type === 'treasury_operation' ? <span className="badge badge-gray">Compra USD</span> : <span className="badge badge-gray">Manual</span>}
+                  </td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.description || '-'}</td>
+                  <td>
+                    {f.status !== 'anulado' && f.reference_type !== 'treasury_operation' && (
+                      <button className="btn btn-sm btn-danger" onClick={() => voidCashFlow(f.id)} title="Anular"><XCircle size={14} /></button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!cashFlows.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>{cashLoading ? 'Cargando...' : 'No hay movimientos'}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+      </>}
 
       {/* ── Detail Modal ── */}
       {detail && (

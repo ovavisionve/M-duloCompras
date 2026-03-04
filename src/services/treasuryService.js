@@ -2,6 +2,7 @@ const db = require('../database/connection');
 const { round2 } = require('../utils/helpers');
 const { AppError } = require('../middleware/errorHandler');
 const auditService = require('./auditService');
+const exchangeRateService = require('./exchangeRateService');
 
 /**
  * Create a treasury operation (single step)
@@ -104,6 +105,20 @@ async function createOperation(data, userId, ip) {
   }
 
   await db('treasury_ledger').insert(ledgerEntries);
+
+  // Auto-create egreso in cash flows (VES leaving for USD purchase)
+  await db('treasury_cash_flows').insert({
+    flow_date: operation_date,
+    flow_type: 'egreso',
+    amount_ves: ves,
+    bcv_rate: bcv,
+    usd_equivalent: usdAtBcv,
+    description: `Compra ${purchaseLabel}: ${amountUsd} USD a tasa ${pRate}`,
+    reference_type: 'treasury_operation',
+    reference_id: operation.id,
+    created_by: userId,
+  });
+
   await auditService.logAction(userId, 'treasury_operation', operation.id, 'create', null, operation, ip);
   return operation;
 }
@@ -264,6 +279,204 @@ async function getAccounts() {
   return db('internal_accounts').where({ is_active: true }).orderBy('code');
 }
 
+// ─── Cash Flow / Posición Cambiaria ───
+
+/**
+ * Record a manual VES entry or exit
+ */
+async function recordCashFlow(data, userId, ip) {
+  const { flow_date, flow_type, amount_ves, bcv_rate, description } = data;
+
+  if (!flow_date || !flow_type || !amount_ves || !bcv_rate) {
+    throw new AppError('Fecha, tipo, monto VES y tasa BCV son requeridos', 400);
+  }
+
+  const ves = parseFloat(amount_ves);
+  const bcv = parseFloat(bcv_rate);
+  if (ves <= 0 || bcv <= 0) throw new AppError('Monto y tasa deben ser mayores a 0', 400);
+  if (!['ingreso', 'egreso'].includes(flow_type)) throw new AppError('Tipo debe ser ingreso o egreso', 400);
+
+  const usdEquiv = round2(ves / bcv);
+
+  const [flow] = await db('treasury_cash_flows').insert({
+    flow_date,
+    flow_type,
+    amount_ves: ves,
+    bcv_rate: bcv,
+    usd_equivalent: usdEquiv,
+    description: description || null,
+    reference_type: 'manual',
+    created_by: userId,
+  }).returning('*');
+
+  await auditService.logAction(userId, 'treasury_cash_flow', flow.id, 'create', null, flow, ip);
+  return flow;
+}
+
+/**
+ * Get current cash position with revaluation at today's BCV
+ */
+async function getCashPosition() {
+  const flows = await db('treasury_cash_flows')
+    .where({ status: 'activo' })
+    .orderBy('flow_date', 'desc');
+
+  // Current balance
+  let balanceVes = 0;
+  let totalInVes = 0;
+  let totalOutVes = 0;
+  let totalInUsdAtEntry = 0;
+  let totalOutUsdAtEntry = 0;
+
+  flows.forEach((f) => {
+    const ves = parseFloat(f.amount_ves) || 0;
+    const usd = parseFloat(f.usd_equivalent) || 0;
+    if (f.flow_type === 'ingreso') {
+      balanceVes += ves;
+      totalInVes += ves;
+      totalInUsdAtEntry += usd;
+    } else {
+      balanceVes -= ves;
+      totalOutVes += ves;
+      totalOutUsdAtEntry += usd;
+    }
+  });
+
+  // Get today's BCV rate for revaluation
+  let todayBcv = 0;
+  try {
+    const rateData = await exchangeRateService.getTodayRate();
+    if (rateData) todayBcv = parseFloat(rateData.rate);
+  } catch (e) { /* no rate available */ }
+
+  const balanceUsdToday = todayBcv > 0 ? round2(balanceVes / todayBcv) : 0;
+  const balanceUsdAtEntry = round2(totalInUsdAtEntry - totalOutUsdAtEntry);
+
+  // Revaluation: difference between USD value at entry vs USD value today
+  const revaluationUsd = todayBcv > 0 ? round2(balanceUsdToday - balanceUsdAtEntry) : 0;
+
+  return {
+    balance_ves: round2(balanceVes),
+    balance_usd_at_entry: balanceUsdAtEntry,
+    balance_usd_today: balanceUsdToday,
+    revaluation_usd: revaluationUsd,
+    today_bcv_rate: todayBcv,
+    total_ingresos_ves: round2(totalInVes),
+    total_egresos_ves: round2(totalOutVes),
+    total_ingresos_usd_entry: round2(totalInUsdAtEntry),
+    total_egresos_usd_entry: round2(totalOutUsdAtEntry),
+    movements_count: flows.length,
+  };
+}
+
+/**
+ * List cash flow movements with filters
+ */
+async function listCashFlows({ flow_type, from_date, to_date, page = 1, limit = 20 }) {
+  const query = db('treasury_cash_flows')
+    .leftJoin('users', 'treasury_cash_flows.created_by', 'users.id')
+    .where('treasury_cash_flows.status', 'activo')
+    .select(
+      'treasury_cash_flows.*',
+      'users.full_name as created_by_name',
+    );
+
+  if (flow_type && flow_type.trim()) query.where('treasury_cash_flows.flow_type', flow_type.trim());
+  if (from_date && from_date.trim()) query.where('treasury_cash_flows.flow_date', '>=', from_date.trim());
+  if (to_date && to_date.trim()) query.where('treasury_cash_flows.flow_date', '<=', to_date.trim());
+
+  const [{ count }] = await query.clone().count();
+  const data = await query.orderBy('treasury_cash_flows.flow_date', 'desc').limit(limit).offset((page - 1) * limit);
+
+  // Enrich with running balance
+  let todayBcv = 0;
+  try {
+    const rateData = await exchangeRateService.getTodayRate();
+    if (rateData) todayBcv = parseFloat(rateData.rate);
+  } catch (e) { /* no rate */ }
+
+  const enriched = data.map((f) => {
+    const ves = parseFloat(f.amount_ves) || 0;
+    const usdToday = todayBcv > 0 ? round2(ves / todayBcv) : 0;
+    return { ...f, usd_today: usdToday, today_bcv_rate: todayBcv };
+  });
+
+  return { data: enriched, pagination: { total: parseInt(count), page: parseInt(page), limit: parseInt(limit) } };
+}
+
+/**
+ * Void a cash flow entry
+ */
+async function voidCashFlow(flowId, reason, userId, ip) {
+  const flow = await db('treasury_cash_flows').where({ id: flowId }).first();
+  if (!flow) throw new AppError('Movimiento no encontrado', 404);
+  if (flow.status === 'anulado') throw new AppError('Ya está anulado', 400);
+
+  const [updated] = await db('treasury_cash_flows').where({ id: flowId }).update({
+    status: 'anulado',
+    description: `ANULADO: ${reason}. ${flow.description || ''}`,
+    updated_at: new Date(),
+  }).returning('*');
+
+  await auditService.logAction(userId, 'treasury_cash_flow', flowId, 'void', flow, updated, ip);
+  return updated;
+}
+
+/**
+ * Revaluation report: compares VES balance value at different dates
+ */
+async function getRevaluationReport(fromDate, toDate) {
+  if (!fromDate || !toDate) throw new AppError('Fechas desde y hasta son requeridas', 400);
+
+  // Get all active flows up to toDate
+  const flows = await db('treasury_cash_flows')
+    .where({ status: 'activo' })
+    .where('flow_date', '<=', toDate)
+    .orderBy('flow_date');
+
+  // Get BCV rates in the range
+  const rates = await exchangeRateService.getRateRange(fromDate, toDate);
+
+  // Calculate balance at each rate date
+  const snapshots = [];
+  for (const rate of rates) {
+    const rateDate = typeof rate.rate_date === 'string' ? rate.rate_date : rate.rate_date.toISOString().split('T')[0];
+    const bcv = parseFloat(rate.rate) || 0;
+    if (bcv <= 0) continue;
+
+    // Balance up to this date
+    let balVes = 0;
+    flows.forEach((f) => {
+      const fDate = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+      if (fDate <= rateDate) {
+        const ves = parseFloat(f.amount_ves) || 0;
+        balVes += f.flow_type === 'ingreso' ? ves : -ves;
+      }
+    });
+
+    snapshots.push({
+      date: rateDate,
+      bcv_rate: bcv,
+      balance_ves: round2(balVes),
+      balance_usd: bcv > 0 ? round2(balVes / bcv) : 0,
+    });
+  }
+
+  // Overall change
+  const first = snapshots[0];
+  const last = snapshots[snapshots.length - 1];
+  const changeUsd = first && last ? round2(last.balance_usd - first.balance_usd) : 0;
+
+  return {
+    from_date: fromDate,
+    to_date: toDate,
+    snapshots,
+    change_usd: changeUsd,
+    first_snapshot: first || null,
+    last_snapshot: last || null,
+  };
+}
+
 module.exports = {
   createOperation,
   voidOperation,
@@ -271,4 +484,9 @@ module.exports = {
   getOperationById,
   getMonthlySummary,
   getAccounts,
+  recordCashFlow,
+  getCashPosition,
+  listCashFlows,
+  voidCashFlow,
+  getRevaluationReport,
 };
