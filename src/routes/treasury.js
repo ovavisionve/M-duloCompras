@@ -1,14 +1,33 @@
 const router = require('express').Router();
+const db = require('../database/connection');
 const { authenticate, authorize } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const treasuryService = require('../services/treasuryService');
 
-// ─── Only admin and tesorero can access treasury operations ───
+// Only admin and tesorero can access
 
-// GET /treasury/accounts - Internal accounts list
+// GET /treasury/accounts - Internal accounts
 router.get('/accounts', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const data = await treasuryService.getAccounts();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// GET /treasury/suppliers - Suppliers for dropdown
+router.get('/suppliers', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const data = await db('suppliers').where({ is_active: true }).orderBy('business_name').select('id', 'business_name', 'rif');
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// GET /treasury/summary?period=MM/YYYY
+router.get('/summary', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const { period } = req.query;
+    if (!period) throw new AppError('Período requerido (MM/YYYY)', 400);
+    const data = await treasuryService.getMonthlySummary(period);
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -21,17 +40,7 @@ router.get('/', authenticate, authorize('admin', 'tesorero'), async (req, res, n
   } catch (err) { next(err); }
 });
 
-// GET /treasury/summary?period=MM/YYYY - Monthly summary
-router.get('/summary', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
-  try {
-    const { period } = req.query;
-    if (!period) throw new AppError('Período requerido (MM/YYYY)', 400);
-    const data = await treasuryService.getMonthlySummary(period);
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-// GET /treasury/:id - Operation detail with ledger
+// GET /treasury/:id - Detail
 router.get('/:id', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const data = await treasuryService.getOperationById(req.params.id);
@@ -39,7 +48,7 @@ router.get('/:id', authenticate, authorize('admin', 'tesorero'), async (req, res
   } catch (err) { next(err); }
 });
 
-// POST /treasury - Create operation (Step 1: VES out)
+// POST /treasury - Create (single step: all data at once)
 router.post('/', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const data = await treasuryService.createOperation(req.body, req.user.id, req.ip);
@@ -47,23 +56,7 @@ router.post('/', authenticate, authorize('admin', 'tesorero'), async (req, res, 
   } catch (err) { next(err); }
 });
 
-// PATCH /treasury/:id/receive-usd - Step 2: USD received
-router.patch('/:id/receive-usd', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
-  try {
-    const data = await treasuryService.receiveUsd(req.params.id, req.body, req.user.id, req.ip);
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-// PATCH /treasury/:id/complete - Mark completed
-router.patch('/:id/complete', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
-  try {
-    const data = await treasuryService.completeOperation(req.params.id, req.body, req.user.id, req.ip);
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-// POST /treasury/:id/void - Void operation
+// POST /treasury/:id/void
 router.post('/:id/void', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
     const { reason } = req.body;
