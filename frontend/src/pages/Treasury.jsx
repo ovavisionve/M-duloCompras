@@ -166,9 +166,20 @@ export default function Treasury() {
         setRepairMsg(`Se repararon ${d.repaired} operación(es) sin movimiento de caja.`);
         loadCashPosition(); loadCashFlows();
       } else {
-        setRepairMsg('No hay operaciones pendientes de reparar. Todo está sincronizado.');
+        setRepairMsg('Todo sincronizado. Cada operación tiene su movimiento de caja.');
       }
     } catch (err) { setRepairMsg(err.response?.data?.error?.message || 'Error al reparar'); }
+  };
+
+  const resetDemo = async () => {
+    if (!window.confirm('Esto borrará TODA la data de tesorería y creará 10 operaciones + 3 ingresos de ejemplo. ¿Continuar?')) return;
+    setRepairMsg('');
+    try {
+      const r = await api.post('/treasury/reset-demo');
+      setRepairMsg(r.data.data.message + ` Tasa BCV usada: ${r.data.data.bcv_rate_used}`);
+      load(); loadCashPosition(); loadCashFlows();
+      setRevaluation(null);
+    } catch (err) { setRepairMsg(err.response?.data?.error?.message || 'Error al resetear'); }
   };
 
   const loadRevaluation = () => {
@@ -239,6 +250,9 @@ export default function Treasury() {
           <Lock size={22} /> Tesorería Interna
         </h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn" onClick={resetDemo} title="Limpiar toda la data y crear 10 movimientos de ejemplo" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+            <XCircle size={16} /> Resetear Demo
+          </button>
           {activeTab === 'divisas' && (
             <>
               <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
@@ -553,15 +567,15 @@ export default function Treasury() {
 
       </>}
 
+      {repairMsg && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{repairMsg}</span>
+          <button onClick={() => setRepairMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600 }}><X size={14} /></button>
+        </div>
+      )}
+
       {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
       {activeTab === 'posicion' && <>
-
-        {repairMsg && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>{repairMsg}</span>
-            <button onClick={() => setRepairMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600 }}><X size={14} /></button>
-          </div>
-        )}
 
         {/* ── Cash Position Dashboard ── */}
         {cashPosition && (

@@ -85,6 +85,14 @@ router.post('/cash/repair', authenticate, authorize('admin', 'tesorero'), async 
   } catch (err) { next(err); }
 });
 
+// POST /treasury/reset-demo - Clean all treasury data and create 10 sample movements
+router.post('/reset-demo', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.resetAndSeedDemo(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 // ─── Treasury Operations ───
 
 // GET /treasury - List operations

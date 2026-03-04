@@ -440,7 +440,9 @@ async function voidCashFlow(flowId, reason, userId, ip) {
 }
 
 /**
- * Revaluation report: compares VES balance value at different dates
+ * Revaluation report: compares VES balance value at different dates.
+ * Uses exchange_rates table first; if empty, falls back to the BCV rates
+ * recorded inside each cash flow movement.
  */
 async function getRevaluationReport(fromDate, toDate) {
   if (!fromDate || !toDate) throw new AppError('Fechas desde y hasta son requeridas', 400);
@@ -451,17 +453,32 @@ async function getRevaluationReport(fromDate, toDate) {
     .where('flow_date', '<=', toDate)
     .orderBy('flow_date');
 
-  // Get BCV rates in the range
+  // Build a date→rate map from both sources
+  const rateMap = new Map(); // date string → bcv rate
+
+  // Source 1: exchange_rates table
   const rates = await exchangeRateService.getRateRange(fromDate, toDate);
+  rates.forEach((r) => {
+    const d = typeof r.rate_date === 'string' ? r.rate_date : r.rate_date.toISOString().split('T')[0];
+    const val = parseFloat(r.rate);
+    if (val > 0) rateMap.set(d, val);
+  });
+
+  // Source 2: BCV rates stored in each cash flow (fills gaps)
+  flows.forEach((f) => {
+    const d = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+    if (d >= fromDate && d <= toDate && !rateMap.has(d)) {
+      const val = parseFloat(f.bcv_rate);
+      if (val > 0) rateMap.set(d, val);
+    }
+  });
+
+  // Sort dates
+  const sortedDates = [...rateMap.keys()].sort();
 
   // Calculate balance at each rate date
-  const snapshots = [];
-  for (const rate of rates) {
-    const rateDate = typeof rate.rate_date === 'string' ? rate.rate_date : rate.rate_date.toISOString().split('T')[0];
-    const bcv = parseFloat(rate.rate) || 0;
-    if (bcv <= 0) continue;
-
-    // Balance up to this date
+  const snapshots = sortedDates.map((rateDate) => {
+    const bcv = rateMap.get(rateDate);
     let balVes = 0;
     flows.forEach((f) => {
       const fDate = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
@@ -470,16 +487,14 @@ async function getRevaluationReport(fromDate, toDate) {
         balVes += f.flow_type === 'ingreso' ? ves : -ves;
       }
     });
-
-    snapshots.push({
+    return {
       date: rateDate,
       bcv_rate: bcv,
       balance_ves: round2(balVes),
       balance_usd: bcv > 0 ? round2(balVes / bcv) : 0,
-    });
-  }
+    };
+  });
 
-  // Overall change
   const first = snapshots[0];
   const last = snapshots[snapshots.length - 1];
   const changeUsd = first && last ? round2(last.balance_usd - first.balance_usd) : 0;
@@ -535,6 +550,139 @@ async function repairMissingCashFlows(userId) {
   return { repaired: ops.length, operations: ops.map((o) => ({ id: o.id, date: o.operation_date, amount_ves: o.amount_ves })) };
 }
 
+/**
+ * Reset all treasury data and create 10 sample movements.
+ * Uses today's real BCV rate from exchange_rates table.
+ */
+async function resetAndSeedDemo(userId) {
+  // Get current BCV rate
+  const todayRate = await exchangeRateService.getTodayRate();
+  const bcv = todayRate ? parseFloat(todayRate.rate) : 0;
+  if (bcv <= 0) throw new AppError('No hay tasa BCV disponible. Ve a Tasas de Cambio y obtén la tasa primero.', 400);
+
+  await db.transaction(async (trx) => {
+    // Clean all treasury data
+    await trx('treasury_cash_flows').del();
+    await trx('treasury_ledger').del();
+    await trx('treasury_operations').del();
+
+    // Get internal accounts
+    const accounts = await trx('internal_accounts')
+      .whereIn('code', ['PREST_ACC', 'BANCO_VES', 'BANCO_USD', 'CAJA_USD', 'GAN_CAMB', 'PERD_CAMB']);
+    const getAcc = (code) => accounts.find((a) => a.code === code);
+
+    // Helper to create a complete operation with ledger + cash flow
+    const createOp = async (opData) => {
+      const ves = opData.amount_ves;
+      const pRate = opData.purchase_rate;
+      const opBcv = opData.bcv_rate;
+      const amountUsd = round2(ves / pRate);
+      const usdAtBcv = round2(ves / opBcv);
+      const diffUsd = round2(amountUsd - usdAtBcv);
+      const diffVes = round2(diffUsd * opBcv);
+      const destCode = opData.destination_type === 'caja_usd' ? 'CAJA_USD' : 'BANCO_USD';
+      const purchaseLabel = opData.purchase_type.charAt(0).toUpperCase() + opData.purchase_type.slice(1);
+
+      const [op] = await trx('treasury_operations').insert({
+        operation_date: opData.date,
+        description: opData.description,
+        purchase_type: opData.purchase_type,
+        amount_ves: ves,
+        amount_usd: amountUsd,
+        parallel_rate: pRate,
+        purchase_rate: pRate,
+        bcv_rate: opBcv,
+        destination_type: opData.destination_type || 'banco_usd',
+        exchange_difference: diffVes,
+        diff_usd: diffUsd,
+        supplier_name: opData.supplier_name || null,
+        status: 'completada',
+        created_by: userId,
+      }).returning('*');
+
+      const ledger = [
+        { operation_id: op.id, account_id: getAcc('PREST_ACC').id, movement_type: 'debito', amount: ves, currency: 'VES', description: `Salida VES - ${purchaseLabel}`, movement_date: opData.date },
+        { operation_id: op.id, account_id: getAcc('BANCO_VES').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Salida banco VES', movement_date: opData.date },
+        { operation_id: op.id, account_id: getAcc(destCode).id, movement_type: 'debito', amount: amountUsd, currency: 'USD', description: `Ingreso ${amountUsd} USD (${purchaseLabel} a tasa ${pRate})`, movement_date: opData.date },
+        { operation_id: op.id, account_id: getAcc('PREST_ACC').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Liquidación préstamo accionista', movement_date: opData.date },
+      ];
+      if (diffVes !== 0) {
+        const isGain = diffVes > 0;
+        ledger.push({
+          operation_id: op.id, account_id: getAcc(isGain ? 'GAN_CAMB' : 'PERD_CAMB').id,
+          movement_type: isGain ? 'credito' : 'debito',
+          amount: Math.abs(diffVes), currency: 'VES',
+          description: `${isGain ? 'Ganancia' : 'Pérdida'}: ${Math.abs(diffUsd)} USD`,
+          movement_date: opData.date,
+        });
+      }
+      await trx('treasury_ledger').insert(ledger);
+
+      await trx('treasury_cash_flows').insert({
+        flow_date: opData.date,
+        flow_type: 'egreso',
+        amount_ves: ves,
+        bcv_rate: opBcv,
+        usd_equivalent: usdAtBcv,
+        description: `Compra ${purchaseLabel}: ${amountUsd} USD a tasa ${pRate}`,
+        reference_type: 'treasury_operation',
+        reference_id: op.id,
+        created_by: userId,
+      });
+
+      return op;
+    };
+
+    // Build 10 demo operations using today's real BCV rate
+    const spread = bcv * 0.20; // ~20% spread for parallel rate
+    const parallelRate = round2(bcv + spread);
+
+    const demoOps = [
+      { date: '2026-03-01', amount_ves: 500000, purchase_rate: parallelRate, bcv_rate: bcv, purchase_type: 'efectivo', description: 'Compra USD efectivo - Proveedor A', supplier_name: 'Proveedor A', destination_type: 'banco_usd' },
+      { date: '2026-03-01', amount_ves: 1200000, purchase_rate: round2(parallelRate - 5), bcv_rate: bcv, purchase_type: 'zelle', description: 'Pago Zelle proveedor exterior', supplier_name: 'Travel Corp', destination_type: 'banco_usd' },
+      { date: '2026-03-02', amount_ves: 750000, purchase_rate: parallelRate, bcv_rate: bcv, purchase_type: 'binance', description: 'Compra USDT para pago sistema', supplier_name: 'Tech Solutions', destination_type: 'banco_usd' },
+      { date: '2026-03-02', amount_ves: 300000, purchase_rate: round2(parallelRate + 3), bcv_rate: bcv, purchase_type: 'efectivo', description: 'USD cash para viáticos', supplier_name: null, destination_type: 'caja_usd' },
+      { date: '2026-03-03', amount_ves: 2000000, purchase_rate: round2(parallelRate - 2), bcv_rate: bcv, purchase_type: 'zelle', description: 'Pago proveedor GDS mensual', supplier_name: 'Amadeus IT', destination_type: 'banco_usd' },
+      { date: '2026-03-03', amount_ves: 450000, purchase_rate: parallelRate, bcv_rate: bcv, purchase_type: 'paypal', description: 'Suscripción software mensual', supplier_name: 'SaaS Provider', destination_type: 'banco_usd' },
+      { date: '2026-03-03', amount_ves: 800000, purchase_rate: round2(parallelRate + 1), bcv_rate: bcv, purchase_type: 'transferencia_usd', description: 'Transferencia USD a cuenta Miami', supplier_name: null, destination_type: 'banco_usd' },
+      { date: '2026-03-04', amount_ves: 1500000, purchase_rate: round2(parallelRate - 3), bcv_rate: bcv, purchase_type: 'binance', description: 'Compra USDT para pago hosting', supplier_name: 'AWS', destination_type: 'banco_usd' },
+      { date: '2026-03-04', amount_ves: 350000, purchase_rate: parallelRate, bcv_rate: bcv, purchase_type: 'efectivo', description: 'USD efectivo para caja chica', supplier_name: null, destination_type: 'caja_usd' },
+      { date: '2026-03-04', amount_ves: 950000, purchase_rate: round2(parallelRate + 2), bcv_rate: bcv, purchase_type: 'zelle', description: 'Pago boleto aéreo cliente', supplier_name: 'Airline Partner', destination_type: 'banco_usd' },
+    ];
+
+    for (const opData of demoOps) {
+      await createOp(opData);
+    }
+
+    // Also create 3 manual cash flow entries (ingresos) to show VES entering
+    const manualFlows = [
+      { flow_date: '2026-03-01', flow_type: 'ingreso', amount_ves: 5000000, bcv_rate: bcv, description: 'Aporte accionista para operaciones del mes' },
+      { flow_date: '2026-03-02', flow_type: 'ingreso', amount_ves: 3000000, bcv_rate: bcv, description: 'Cobro clientes - pagos pendientes' },
+      { flow_date: '2026-03-04', flow_type: 'ingreso', amount_ves: 2000000, bcv_rate: bcv, description: 'Transferencia desde cuenta reserva' },
+    ];
+
+    for (const mf of manualFlows) {
+      await trx('treasury_cash_flows').insert({
+        ...mf,
+        usd_equivalent: round2(mf.amount_ves / mf.bcv_rate),
+        reference_type: 'manual',
+        created_by: userId,
+      });
+    }
+
+    // Store BCV rates for the demo date range so revaluation works
+    const demoDates = ['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04'];
+    for (const d of demoDates) {
+      const existing = await trx('exchange_rates').where({ rate_date: d }).first();
+      if (!existing) {
+        await trx('exchange_rates').insert({ rate_date: d, rate: bcv, source: 'bcv_api' });
+      }
+    }
+  });
+
+  return { message: 'Data limpiada. 10 operaciones + 3 ingresos manuales creados.', bcv_rate_used: bcv };
+}
+
 module.exports = {
   createOperation,
   voidOperation,
@@ -548,4 +696,5 @@ module.exports = {
   voidCashFlow,
   getRevaluationReport,
   repairMissingCashFlows,
+  resetAndSeedDemo,
 };
