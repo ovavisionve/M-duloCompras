@@ -43,6 +43,7 @@ export default function Treasury() {
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [revaluation, setRevaluation] = useState(null);
   const [revalDates, setRevalDates] = useState({ from: '', to: '' });
+  const [repairMsg, setRepairMsg] = useState('');
 
   // Summary
   const now = new Date();
@@ -156,6 +157,20 @@ export default function Treasury() {
     catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
+  const repairCashFlows = async () => {
+    setRepairMsg('');
+    try {
+      const r = await api.post('/treasury/cash/repair');
+      const d = r.data.data;
+      if (d.repaired > 0) {
+        setRepairMsg(`Se repararon ${d.repaired} operación(es) sin movimiento de caja.`);
+        loadCashPosition(); loadCashFlows();
+      } else {
+        setRepairMsg('No hay operaciones pendientes de reparar. Todo está sincronizado.');
+      }
+    } catch (err) { setRepairMsg(err.response?.data?.error?.message || 'Error al reparar'); }
+  };
+
   const loadRevaluation = () => {
     if (!revalDates.from || !revalDates.to) { alert('Seleccione fechas desde y hasta'); return; }
     api.get('/treasury/cash/revaluation', { params: { from: revalDates.from, to: revalDates.to } })
@@ -193,6 +208,8 @@ export default function Treasury() {
       setShowForm(false);
       setForm({ operation_date: today, amount_ves: '', bcv_rate: '', purchase_rate: '', purchase_type: 'efectivo', supplier_id: '', description: '', destination_type: 'banco_usd' });
       load();
+      // Also refresh cash position data so Posición Cambiaria tab is up to date
+      loadCashPosition(); loadCashFlows();
     } catch (err) {
       setFormError(err.response?.data?.error?.message || 'Error al crear operación');
     } finally { setSubmitting(false); }
@@ -201,7 +218,7 @@ export default function Treasury() {
   const voidOp = async (id) => {
     const reason = window.prompt('Motivo de anulación:');
     if (!reason) return;
-    try { await api.post(`/treasury/${id}/void`, { reason }); load(); }
+    try { await api.post(`/treasury/${id}/void`, { reason }); load(); loadCashPosition(); loadCashFlows(); }
     catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
@@ -233,9 +250,14 @@ export default function Treasury() {
             </>
           )}
           {activeTab === 'posicion' && (
-            <button className="btn btn-primary" onClick={() => setShowCashForm(!showCashForm)}>
-              <Plus size={16} /> Registrar Movimiento
-            </button>
+            <>
+              <button className="btn" onClick={repairCashFlows} title="Sincronizar compras de divisas que no generaron movimiento de caja">
+                <RefreshCw size={16} /> Sincronizar
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowCashForm(!showCashForm)}>
+                <Plus size={16} /> Registrar Movimiento
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -533,6 +555,13 @@ export default function Treasury() {
 
       {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
       {activeTab === 'posicion' && <>
+
+        {repairMsg && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{repairMsg}</span>
+            <button onClick={() => setRepairMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600 }}><X size={14} /></button>
+          </div>
+        )}
 
         {/* ── Cash Position Dashboard ── */}
         {cashPosition && (

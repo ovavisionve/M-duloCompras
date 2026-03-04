@@ -57,66 +57,75 @@ async function createOperation(data, userId, ip) {
     if (supplier) resolvedSupplierName = supplier.business_name;
   }
 
-  const [operation] = await db('treasury_operations').insert({
-    operation_date,
-    description: description || null,
-    purchase_type: purchase_type || null,
-    amount_ves: ves,
-    source_bank_account_id: source_bank_account_id || null,
-    amount_usd: amountUsd,
-    parallel_rate: pRate,
-    purchase_rate: pRate,
-    bcv_rate: bcv,
-    destination_type: destination_type || 'banco_usd',
-    exchange_difference: diffVes,
-    diff_usd: diffUsd,
-    supplier_id: supplier_id || null,
-    supplier_name: resolvedSupplierName,
-    invoice_id: invoice_id || null,
-    status: 'completada',
-    created_by: userId,
-  }).returning('*');
+  // Wrap everything in a transaction so all inserts succeed or all roll back
+  const operation = await db.transaction(async (trx) => {
+    const [op] = await trx('treasury_operations').insert({
+      operation_date,
+      description: description || null,
+      purchase_type: purchase_type || null,
+      amount_ves: ves,
+      source_bank_account_id: source_bank_account_id || null,
+      amount_usd: amountUsd,
+      parallel_rate: pRate,
+      purchase_rate: pRate,
+      bcv_rate: bcv,
+      destination_type: destination_type || 'banco_usd',
+      exchange_difference: diffVes,
+      diff_usd: diffUsd,
+      supplier_id: supplier_id || null,
+      supplier_name: resolvedSupplierName,
+      invoice_id: invoice_id || null,
+      status: 'completada',
+      created_by: userId,
+    }).returning('*');
 
-  // Ledger entries
-  const accounts = await db('internal_accounts')
-    .whereIn('code', ['PREST_ACC', 'BANCO_VES', 'BANCO_USD', 'CAJA_USD', 'GAN_CAMB', 'PERD_CAMB']);
-  const getAcc = (code) => accounts.find((a) => a.code === code);
+    // Ledger entries
+    const accounts = await trx('internal_accounts')
+      .whereIn('code', ['PREST_ACC', 'BANCO_VES', 'BANCO_USD', 'CAJA_USD', 'GAN_CAMB', 'PERD_CAMB']);
+    const getAcc = (code) => {
+      const acc = accounts.find((a) => a.code === code);
+      if (!acc) throw new AppError(`Cuenta interna "${code}" no encontrada. Verifique que las migraciones se ejecutaron correctamente.`, 500);
+      return acc;
+    };
 
-  const destCode = destination_type === 'caja_usd' ? 'CAJA_USD' : 'BANCO_USD';
-  const purchaseLabel = purchase_type ? purchase_type.charAt(0).toUpperCase() + purchase_type.slice(1) : 'Compra';
+    const destCode = destination_type === 'caja_usd' ? 'CAJA_USD' : 'BANCO_USD';
+    const purchaseLabel = purchase_type ? purchase_type.charAt(0).toUpperCase() + purchase_type.slice(1) : 'Compra';
 
-  const ledgerEntries = [
-    { operation_id: operation.id, account_id: getAcc('PREST_ACC').id, movement_type: 'debito', amount: ves, currency: 'VES', description: `Salida VES - ${purchaseLabel}`, movement_date: operation_date },
-    { operation_id: operation.id, account_id: getAcc('BANCO_VES').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Salida banco VES', movement_date: operation_date },
-    { operation_id: operation.id, account_id: getAcc(destCode).id, movement_type: 'debito', amount: amountUsd, currency: 'USD', description: `Ingreso ${amountUsd} USD (${purchaseLabel} a tasa ${pRate})`, movement_date: operation_date },
-    { operation_id: operation.id, account_id: getAcc('PREST_ACC').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Liquidación préstamo accionista', movement_date: operation_date },
-  ];
+    const ledgerEntries = [
+      { operation_id: op.id, account_id: getAcc('PREST_ACC').id, movement_type: 'debito', amount: ves, currency: 'VES', description: `Salida VES - ${purchaseLabel}`, movement_date: operation_date },
+      { operation_id: op.id, account_id: getAcc('BANCO_VES').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Salida banco VES', movement_date: operation_date },
+      { operation_id: op.id, account_id: getAcc(destCode).id, movement_type: 'debito', amount: amountUsd, currency: 'USD', description: `Ingreso ${amountUsd} USD (${purchaseLabel} a tasa ${pRate})`, movement_date: operation_date },
+      { operation_id: op.id, account_id: getAcc('PREST_ACC').id, movement_type: 'credito', amount: ves, currency: 'VES', description: 'Liquidación préstamo accionista', movement_date: operation_date },
+    ];
 
-  if (diffVes !== 0) {
-    const isGain = diffVes > 0;
-    const diffAcc = getAcc(isGain ? 'GAN_CAMB' : 'PERD_CAMB');
-    ledgerEntries.push({
-      operation_id: operation.id, account_id: diffAcc.id,
-      movement_type: isGain ? 'credito' : 'debito',
-      amount: Math.abs(diffVes), currency: 'VES',
-      description: `${isGain ? 'Ganancia' : 'Pérdida'}: ${Math.abs(diffUsd)} USD (BCV ${bcv} vs ${purchaseLabel} ${pRate})`,
-      movement_date: operation_date,
+    if (diffVes !== 0) {
+      const isGain = diffVes > 0;
+      const diffAcc = getAcc(isGain ? 'GAN_CAMB' : 'PERD_CAMB');
+      ledgerEntries.push({
+        operation_id: op.id, account_id: diffAcc.id,
+        movement_type: isGain ? 'credito' : 'debito',
+        amount: Math.abs(diffVes), currency: 'VES',
+        description: `${isGain ? 'Ganancia' : 'Pérdida'}: ${Math.abs(diffUsd)} USD (BCV ${bcv} vs ${purchaseLabel} ${pRate})`,
+        movement_date: operation_date,
+      });
+    }
+
+    await trx('treasury_ledger').insert(ledgerEntries);
+
+    // Auto-create egreso in cash flows (VES leaving for USD purchase)
+    await trx('treasury_cash_flows').insert({
+      flow_date: operation_date,
+      flow_type: 'egreso',
+      amount_ves: ves,
+      bcv_rate: bcv,
+      usd_equivalent: usdAtBcv,
+      description: `Compra ${purchaseLabel}: ${amountUsd} USD a tasa ${pRate}`,
+      reference_type: 'treasury_operation',
+      reference_id: op.id,
+      created_by: userId,
     });
-  }
 
-  await db('treasury_ledger').insert(ledgerEntries);
-
-  // Auto-create egreso in cash flows (VES leaving for USD purchase)
-  await db('treasury_cash_flows').insert({
-    flow_date: operation_date,
-    flow_type: 'egreso',
-    amount_ves: ves,
-    bcv_rate: bcv,
-    usd_equivalent: usdAtBcv,
-    description: `Compra ${purchaseLabel}: ${amountUsd} USD a tasa ${pRate}`,
-    reference_type: 'treasury_operation',
-    reference_id: operation.id,
-    created_by: userId,
+    return op;
   });
 
   await auditService.logAction(userId, 'treasury_operation', operation.id, 'create', null, operation, ip);
@@ -131,12 +140,20 @@ async function voidOperation(operationId, reason, userId, ip) {
   if (!operation) throw new AppError('Operación no encontrada', 404);
   if (operation.status === 'anulada') throw new AppError('Ya está anulada', 400);
 
-  const [updated] = await db('treasury_operations').where({ id: operationId }).update({
-    status: 'anulada',
-    notes: `ANULADA: ${reason}. ${operation.notes || ''}`,
-    updated_at: new Date(),
-  }).returning('*');
+  await db.transaction(async (trx) => {
+    await trx('treasury_operations').where({ id: operationId }).update({
+      status: 'anulada',
+      notes: `ANULADA: ${reason}. ${operation.notes || ''}`,
+      updated_at: new Date(),
+    });
 
+    // Also void the associated cash flow
+    await trx('treasury_cash_flows')
+      .where({ reference_type: 'treasury_operation', reference_id: operationId, status: 'activo' })
+      .update({ status: 'anulado', description: db.raw("'ANULADO: ' || COALESCE(description, '')"), updated_at: new Date() });
+  });
+
+  const updated = await db('treasury_operations').where({ id: operationId }).first();
   await auditService.logAction(userId, 'treasury_operation', operationId, 'void', operation, updated, ip);
   return updated;
 }
@@ -477,6 +494,46 @@ async function getRevaluationReport(fromDate, toDate) {
   };
 }
 
+/**
+ * Repair: create missing cash flows for operations that were
+ * created before the transaction fix (orphaned operations).
+ */
+async function repairMissingCashFlows(userId) {
+  const ops = await db('treasury_operations')
+    .where({ status: 'completada' })
+    .whereNotExists(
+      db('treasury_cash_flows')
+        .whereRaw('treasury_cash_flows.reference_id = treasury_operations.id')
+        .where({ reference_type: 'treasury_operation', status: 'activo' })
+    )
+    .select('*');
+
+  if (!ops.length) return { repaired: 0, operations: [] };
+
+  const entries = ops.map((op) => {
+    const ves = parseFloat(op.amount_ves) || 0;
+    const bcv = parseFloat(op.bcv_rate) || 0;
+    const usdAtBcv = bcv > 0 ? round2(ves / bcv) : 0;
+    const pRate = parseFloat(op.purchase_rate || op.parallel_rate) || 0;
+    const amountUsd = pRate > 0 ? round2(ves / pRate) : 0;
+    const purchaseLabel = op.purchase_type ? op.purchase_type.charAt(0).toUpperCase() + op.purchase_type.slice(1) : 'Compra';
+    return {
+      flow_date: op.operation_date,
+      flow_type: 'egreso',
+      amount_ves: ves,
+      bcv_rate: bcv,
+      usd_equivalent: usdAtBcv,
+      description: `[Reparado] Compra ${purchaseLabel}: ${amountUsd} USD a tasa ${pRate}`,
+      reference_type: 'treasury_operation',
+      reference_id: op.id,
+      created_by: userId,
+    };
+  });
+
+  await db('treasury_cash_flows').insert(entries);
+  return { repaired: ops.length, operations: ops.map((o) => ({ id: o.id, date: o.operation_date, amount_ves: o.amount_ves })) };
+}
+
 module.exports = {
   createOperation,
   voidOperation,
@@ -489,4 +546,5 @@ module.exports = {
   listCashFlows,
   voidCashFlow,
   getRevaluationReport,
+  repairMissingCashFlows,
 };
