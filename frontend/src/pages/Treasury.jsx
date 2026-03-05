@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw, Download, BarChart3, AlertTriangle, DollarSign } from 'lucide-react';
+import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, Download, BarChart3, AlertTriangle, DollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, Line, Legend, ReferenceLine } from 'recharts';
 import api from '../api';
 
@@ -44,8 +44,6 @@ export default function Treasury() {
   const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
   const [cashFormError, setCashFormError] = useState('');
   const [cashSubmitting, setCashSubmitting] = useState(false);
-  const [revaluation, setRevaluation] = useState(null);
-  const [revalDates, setRevalDates] = useState({ from: '', to: '' });
 
   // ─── Outflow detection state ───
   const [outflowData, setOutflowData] = useState(null);
@@ -54,13 +52,6 @@ export default function Treasury() {
   // ─── Dashboard state ───
   const [dashData, setDashData] = useState(null);
   const [dashLoading, setDashLoading] = useState(false);
-
-  // Summary
-  const now = new Date();
-  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-  const [summaryPeriod, setSummaryPeriod] = useState(defaultPeriod);
-  const [summary, setSummary] = useState(null);
-  const [showSummary, setShowSummary] = useState(false);
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -103,12 +94,6 @@ export default function Treasury() {
       }).catch(() => {});
     }
   }, [showForm]);
-
-  const loadSummary = () => {
-    api.get('/treasury/summary', { params: { period: summaryPeriod } })
-      .then((r) => { setSummary(r.data.data); setShowSummary(true); })
-      .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar resumen'));
-  };
 
   // ─── Dashboard loader ───
   const loadDashboard = () => {
@@ -220,13 +205,6 @@ export default function Treasury() {
     loadOutflows();
   }, []);
 
-  const loadRevaluation = () => {
-    if (!revalDates.from || !revalDates.to) { alert('Seleccione fechas desde y hasta'); return; }
-    api.get('/treasury/cash/revaluation', { params: { from: revalDates.from, to: revalDates.to } })
-      .then((r) => setRevaluation(r.data.data))
-      .catch((err) => alert(err.response?.data?.error?.message || 'Error'));
-  };
-
   // Live calculation preview
   const calcPreview = () => {
     const ves = parseFloat(form.amount_ves) || 0;
@@ -295,9 +273,6 @@ export default function Treasury() {
               </button>
               <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/excel', 'compra_divisas.xlsx')} title="Descargar Excel">
                 <Download size={16} /> Excel
-              </button>
-              <button className="btn" onClick={() => { setShowSummary(!showSummary); if (!summary) loadSummary(); }}>
-                <TrendingUp size={16} /> Resumen
               </button>
               <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
                 <Plus size={16} /> Comprar Divisas
@@ -518,69 +493,6 @@ export default function Treasury() {
       {/* ══════════ TAB: COMPRA DE DIVISAS ══════════ */}
       {activeTab === 'divisas' && <>
 
-      {/* ── Summary ── */}
-      {showSummary && (
-        <div className="card" style={{ marginBottom: '1rem', border: '2px solid var(--info)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3>Resumen Mensual</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input value={summaryPeriod} onChange={(e) => setSummaryPeriod(e.target.value)} placeholder="MM/YYYY" style={{ width: '110px', padding: '0.3rem 0.5rem', border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '0.85rem' }} />
-              <button className="btn btn-sm btn-primary" onClick={loadSummary}>Ver</button>
-              <button className="btn btn-sm" onClick={() => setShowSummary(false)}><X size={14} /></button>
-            </div>
-          </div>
-          {summary && (
-            <>
-              <div className="stats-grid">
-                <div className="stat-card"><div className="label">Operaciones</div><div className="value">{summary.operations_count}</div></div>
-                <div className="stat-card"><div className="label">VES Total Salida</div><div className="value" style={{ color: 'var(--danger)' }}>{fmtNum(summary.total_ves_out)}</div></div>
-                <div className="stat-card"><div className="label">USD a Tasa BCV</div><div className="value" style={{ color: 'var(--gray-700)' }}>{fmtNum(summary.total_usd_equivalent_bcv)}</div><div className="sub">Lo que "valdrían" a BCV</div></div>
-                <div className="stat-card"><div className="label">USD Reales Comprados</div><div className="value" style={{ color: 'var(--success)' }}>{fmtNum(summary.total_usd_in)}</div><div className="sub">Lo que realmente compraste</div></div>
-              </div>
-              <div className="stats-grid">
-                <div className="stat-card" style={{ borderLeft: `4px solid ${summary.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
-                  <div className="label">Resultado USD</div>
-                  <div className="value" style={{ color: summary.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>{summary.diff_usd >= 0 ? '+' : ''}{fmtNum(summary.diff_usd)} USD</div>
-                  <div className="sub">{summary.diff_usd >= 0 ? 'Ganancia' : 'Pérdida'} por diferencial de tasas</div>
-                </div>
-                <div className="stat-card"><div className="label">Tasa Prom. Compra</div><div className="value">{fmtRate(summary.avg_purchase_rate)}</div></div>
-                <div className="stat-card"><div className="label">Tasa Prom. BCV</div><div className="value">{fmtRate(summary.avg_bcv_rate)}</div></div>
-                <div className="stat-card"><div className="label">Spread</div><div className="value" style={{ color: 'var(--warning)' }}>{summary.avg_purchase_rate && summary.avg_bcv_rate ? fmtNum(((summary.avg_purchase_rate - summary.avg_bcv_rate) / summary.avg_bcv_rate) * 100) : '0,00'}%</div></div>
-              </div>
-              {/* By type */}
-              {Object.keys(summary.by_purchase_type || {}).length > 0 && (
-                <div style={{ marginTop: '0.75rem' }}>
-                  <strong style={{ fontSize: '0.85rem' }}>Por tipo de compra:</strong>
-                  <table style={{ marginTop: '0.5rem' }}>
-                    <thead><tr><th>Tipo</th><th>Ops</th><th>VES</th><th>USD</th><th>Dif. USD</th></tr></thead>
-                    <tbody>{Object.entries(summary.by_purchase_type).map(([type, d]) => (
-                      <tr key={type}>
-                        <td>{purchaseTypes[type] || type}</td>
-                        <td>{d.count}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{fmtNum(d.total_ves)}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{fmtNum(d.total_usd)}</td>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: d.diff_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>{d.diff_usd >= 0 ? '+' : ''}{fmtNum(d.diff_usd)}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              )}
-              {summary.account_balances?.length > 0 && (
-                <div style={{ marginTop: '0.75rem' }}>
-                  <strong style={{ fontSize: '0.85rem' }}>Cuentas contables:</strong>
-                  <table style={{ marginTop: '0.5rem' }}>
-                    <thead><tr><th>Cuenta</th><th>Débitos</th><th>Créditos</th></tr></thead>
-                    <tbody>{summary.account_balances.map((a) => (
-                      <tr key={a.code}><td>{a.name}</td><td style={{ fontFamily: 'monospace' }}>{fmtNum(a.total_debito)}</td><td style={{ fontFamily: 'monospace' }}>{fmtNum(a.total_credito)}</td></tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
       {/* ── Create Form ── */}
       {showForm && (
         <div className="card" style={{ marginBottom: '1rem' }}>
@@ -797,121 +709,6 @@ export default function Treasury() {
 
       {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
       {activeTab === 'posicion' && <>
-
-        {/* ── Cash Position Dashboard ── */}
-        {cashPosition && (
-          <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-            <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
-              <div className="label">Saldo VES</div>
-              <div className="value" style={{ color: cashPosition.balance_ves >= 0 ? 'var(--primary)' : 'var(--danger)' }}>
-                {fmtNum(cashPosition.balance_ves)}
-              </div>
-              <div className="sub">Bolívares en cuenta interna</div>
-            </div>
-            <div className="stat-card" style={{ borderLeft: '4px solid var(--info)' }}>
-              <div className="label">USD al Ingresar</div>
-              <div className="value" style={{ color: 'var(--gray-700)' }}>
-                {fmtNum(cashPosition.balance_usd_at_entry)}
-              </div>
-              <div className="sub">Valor USD al momento de cada entrada</div>
-            </div>
-            <div className="stat-card" style={{ borderLeft: '4px solid var(--success)' }}>
-              <div className="label">USD Hoy (BCV {fmtRate(cashPosition.today_bcv_rate)})</div>
-              <div className="value" style={{ color: 'var(--success)' }}>
-                {fmtNum(cashPosition.balance_usd_today)}
-              </div>
-              <div className="sub">Valor USD a tasa BCV de hoy</div>
-            </div>
-            <div className="stat-card" style={{ borderLeft: `4px solid ${cashPosition.revaluation_usd >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
-              <div className="label">Revalorización</div>
-              <div className="value" style={{ color: cashPosition.revaluation_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {cashPosition.revaluation_usd >= 0 ? '+' : ''}{fmtNum(cashPosition.revaluation_usd)} USD
-              </div>
-              <div className="sub">{cashPosition.revaluation_usd >= 0 ? 'Ganancia' : 'Pérdida'} vs valor de entrada</div>
-            </div>
-          </div>
-        )}
-
-        {cashPosition && (
-          <div className="card" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', fontSize: '0.82rem' }}>
-              <div>
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Total Ingresos VES</div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--success)' }}>{fmtNum(cashPosition.total_ingresos_ves)}</div>
-              </div>
-              <div>
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Total Egresos VES</div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--danger)' }}>{fmtNum(cashPosition.total_egresos_ves)}</div>
-              </div>
-              <div>
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>USD Ingresos (entrada)</div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(cashPosition.total_ingresos_usd_entry)}</div>
-              </div>
-              <div>
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem', textTransform: 'uppercase' }}>Movimientos</div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{cashPosition.movements_count}</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Revaluation Report ── */}
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <RefreshCw size={14} /> Revalorización Histórica
-            </strong>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Desde</label>
-              <input type="date" value={revalDates.from} onChange={(e) => setRevalDates({ ...revalDates, from: e.target.value })} style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem' }} />
-              <label style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Hasta</label>
-              <input type="date" value={revalDates.to} onChange={(e) => setRevalDates({ ...revalDates, to: e.target.value })} style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem' }} />
-              <button className="btn btn-sm btn-primary" onClick={loadRevaluation}>Ver</button>
-            </div>
-          </div>
-          {revaluation && revaluation.snapshots?.length > 0 && (
-            <div style={{ marginTop: '0.75rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-                {revaluation.first_snapshot && (
-                  <div style={{ flex: 1, padding: '0.5rem', background: '#f0f9ff', borderRadius: '6px', fontSize: '0.82rem' }}>
-                    <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Inicio ({fmtDate(revaluation.first_snapshot.date)})</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(revaluation.first_snapshot.balance_ves)} VES = {fmtNum(revaluation.first_snapshot.balance_usd)} USD</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>BCV: {fmtRate(revaluation.first_snapshot.bcv_rate)}</div>
-                  </div>
-                )}
-                {revaluation.last_snapshot && (
-                  <div style={{ flex: 1, padding: '0.5rem', background: revaluation.change_usd >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', fontSize: '0.82rem' }}>
-                    <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Fin ({fmtDate(revaluation.last_snapshot.date)})</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(revaluation.last_snapshot.balance_ves)} VES = {fmtNum(revaluation.last_snapshot.balance_usd)} USD</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)' }}>BCV: {fmtRate(revaluation.last_snapshot.bcv_rate)}</div>
-                  </div>
-                )}
-                <div style={{ flex: 1, padding: '0.5rem', background: revaluation.change_usd >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                  <div style={{ color: 'var(--gray-500)', fontSize: '0.7rem' }}>Cambio USD</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.1rem', color: revaluation.change_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                    {revaluation.change_usd >= 0 ? '+' : ''}{fmtNum(revaluation.change_usd)} USD
-                  </div>
-                </div>
-              </div>
-              <table style={{ fontSize: '0.82rem' }}>
-                <thead><tr><th>Fecha</th><th>Tasa BCV</th><th>Saldo VES</th><th>Equivalente USD</th></tr></thead>
-                <tbody>
-                  {revaluation.snapshots.map((s, i) => (
-                    <tr key={i}>
-                      <td>{fmtDate(s.date)}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{fmtRate(s.bcv_rate)}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{fmtNum(s.balance_ves)}</td>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtNum(s.balance_usd)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {revaluation && revaluation.snapshots?.length === 0 && (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.82rem', color: 'var(--gray-500)' }}>No hay tasas BCV registradas en ese rango de fechas.</div>
-          )}
-        </div>
 
         {/* ── Cash Flow Form ── */}
         {showCashForm && (
