@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw, Download, BarChart3 } from 'lucide-react';
+import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, RefreshCw, Download, BarChart3, AlertTriangle, DollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, Line, Legend, ReferenceLine } from 'recharts';
 import api from '../api';
 
@@ -41,12 +41,15 @@ export default function Treasury() {
   const [cashPagination, setCashPagination] = useState({ page: 1, total: 0 });
   const [cashLoading, setCashLoading] = useState(false);
   const [showCashForm, setShowCashForm] = useState(false);
-  const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', amount_ves: '', bcv_rate: '', description: '' });
+  const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
   const [cashFormError, setCashFormError] = useState('');
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [revaluation, setRevaluation] = useState(null);
   const [revalDates, setRevalDates] = useState({ from: '', to: '' });
-  const [repairMsg, setRepairMsg] = useState('');
+
+  // ─── Outflow detection state ───
+  const [outflowData, setOutflowData] = useState(null);
+  const [outflowDismissed, setOutflowDismissed] = useState(false);
 
   // ─── Dashboard state ───
   const [dashData, setDashData] = useState(null);
@@ -117,8 +120,8 @@ export default function Treasury() {
   };
 
   useEffect(() => {
-    if (activeTab === 'dashboard') loadDashboard();
-  }, [activeTab]);
+    if (activeTab === 'dashboard' && !dashData) loadDashboard();
+  }, [activeTab, dashData]);
 
   // ─── Download helpers ───
   const downloadFile = (url, filename) => {
@@ -156,9 +159,10 @@ export default function Treasury() {
 
   useEffect(() => {
     if (activeTab === 'posicion') { loadCashPosition(); loadCashFlows(); }
+    if (activeTab === 'divisas') { load(); }
   }, [activeTab, cashFilters, cashPagination.page]);
 
-  // Auto fetch BCV for cash form
+  // Auto fetch BCV for cash form (needed for ves and custom modes)
   useEffect(() => {
     if (showCashForm) {
       api.get('/exchange-rates/today').then((r) => {
@@ -170,16 +174,29 @@ export default function Treasury() {
   const handleCashCreate = async (e) => {
     e.preventDefault();
     setCashFormError('');
-    const ves = parseFloat(cashForm.amount_ves);
-    const bcv = parseFloat(cashForm.bcv_rate);
-    if (!ves || ves <= 0) { setCashFormError('Ingrese monto VES válido'); return; }
-    if (!bcv || bcv <= 0) { setCashFormError('La tasa BCV es requerida'); return; }
+    const mode = cashForm.currency_mode;
+
+    if (mode === 'usd') {
+      const usd = parseFloat(cashForm.amount_usd);
+      if (!usd || usd <= 0) { setCashFormError('Ingrese monto USD válido'); return; }
+    } else if (mode === 'custom') {
+      const usd = parseFloat(cashForm.amount_usd);
+      const cRate = parseFloat(cashForm.custom_rate);
+      if (!usd || usd <= 0) { setCashFormError('Ingrese monto USD válido'); return; }
+      if (!cRate || cRate <= 0) { setCashFormError('Ingrese tasa personalizada válida'); return; }
+    } else {
+      const ves = parseFloat(cashForm.amount_ves);
+      const bcv = parseFloat(cashForm.bcv_rate);
+      if (!ves || ves <= 0) { setCashFormError('Ingrese monto VES válido'); return; }
+      if (!bcv || bcv <= 0) { setCashFormError('La tasa BCV es requerida'); return; }
+    }
+
     setCashSubmitting(true);
     try {
-      await api.post('/treasury/cash/flows', { ...cashForm, amount_ves: ves, bcv_rate: bcv });
+      await api.post('/treasury/cash/flows', cashForm);
       setShowCashForm(false);
-      setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', amount_ves: '', bcv_rate: '', description: '' });
-      loadCashPosition(); loadCashFlows();
+      setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
+      loadCashPosition(); loadCashFlows(); loadOutflows();
     } catch (err) {
       setCashFormError(err.response?.data?.error?.message || 'Error al registrar movimiento');
     } finally { setCashSubmitting(false); }
@@ -188,34 +205,20 @@ export default function Treasury() {
   const voidCashFlow = async (id) => {
     const reason = window.prompt('Motivo de anulación:');
     if (!reason) return;
-    try { await api.post(`/treasury/cash/flows/${id}/void`, { reason }); loadCashPosition(); loadCashFlows(); }
+    try { await api.post(`/treasury/cash/flows/${id}/void`, { reason }); loadCashPosition(); loadCashFlows(); setDashData(null); }
     catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
-  const repairCashFlows = async () => {
-    setRepairMsg('');
-    try {
-      const r = await api.post('/treasury/cash/repair');
-      const d = r.data.data;
-      if (d.repaired > 0) {
-        setRepairMsg(`Se repararon ${d.repaired} operación(es) sin movimiento de caja.`);
-        loadCashPosition(); loadCashFlows();
-      } else {
-        setRepairMsg('Todo sincronizado. Cada operación tiene su movimiento de caja.');
-      }
-    } catch (err) { setRepairMsg(err.response?.data?.error?.message || 'Error al reparar'); }
+  // ─── Outflow detection on mount ───
+  const loadOutflows = () => {
+    api.get('/treasury/detect-outflows')
+      .then((r) => setOutflowData(r.data.data))
+      .catch(() => {});
   };
 
-  const resetDemo = async () => {
-    if (!window.confirm('Esto borrará TODA la data de tesorería y creará 10 operaciones + 3 ingresos de ejemplo. ¿Continuar?')) return;
-    setRepairMsg('');
-    try {
-      const r = await api.post('/treasury/reset-demo');
-      setRepairMsg(r.data.data.message + ` Tasa BCV usada: ${r.data.data.bcv_rate_used}`);
-      load(); loadCashPosition(); loadCashFlows();
-      setRevaluation(null);
-    } catch (err) { setRepairMsg(err.response?.data?.error?.message || 'Error al resetear'); }
-  };
+  useEffect(() => {
+    loadOutflows();
+  }, []);
 
   const loadRevaluation = () => {
     if (!revalDates.from || !revalDates.to) { alert('Seleccione fechas desde y hasta'); return; }
@@ -254,8 +257,8 @@ export default function Treasury() {
       setShowForm(false);
       setForm({ operation_date: today, amount_ves: '', bcv_rate: '', purchase_rate: '', purchase_type: 'efectivo', supplier_id: '', description: '', destination_type: 'banco_usd' });
       load();
-      // Also refresh cash position data so Posición Cambiaria tab is up to date
       loadCashPosition(); loadCashFlows();
+      setDashData(null); // force dashboard refresh on next visit
     } catch (err) {
       setFormError(err.response?.data?.error?.message || 'Error al crear operación');
     } finally { setSubmitting(false); }
@@ -264,7 +267,7 @@ export default function Treasury() {
   const voidOp = async (id) => {
     const reason = window.prompt('Motivo de anulación:');
     if (!reason) return;
-    try { await api.post(`/treasury/${id}/void`, { reason }); load(); loadCashPosition(); loadCashFlows(); }
+    try { await api.post(`/treasury/${id}/void`, { reason }); load(); loadCashPosition(); loadCashFlows(); setDashData(null); }
     catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
@@ -285,9 +288,6 @@ export default function Treasury() {
           <Lock size={22} /> Tesorería Interna
         </h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn" onClick={resetDemo} title="Limpiar toda la data y crear 10 movimientos de ejemplo" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
-            <XCircle size={16} /> Reset Demo
-          </button>
           {activeTab === 'divisas' && (
             <>
               <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/pdf', 'compra_divisas.pdf')} title="Descargar PDF">
@@ -312,9 +312,6 @@ export default function Treasury() {
               <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/excel', 'posicion_cambiaria.xlsx')} title="Descargar Excel">
                 <Download size={16} /> Excel
               </button>
-              <button className="btn" onClick={repairCashFlows} title="Sincronizar compras de divisas que no generaron movimiento de caja">
-                <RefreshCw size={16} /> Sincronizar
-              </button>
               <button className="btn btn-primary" onClick={() => setShowCashForm(!showCashForm)}>
                 <Plus size={16} /> Registrar Movimiento
               </button>
@@ -323,9 +320,32 @@ export default function Treasury() {
         </div>
       </div>
 
-      <div style={{ background: '#fef3c7', border: '1px solid #fde047', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#92400e' }}>
-        <strong>Uso interno:</strong> No visible en reportes SENIAT. Contabilizado como Préstamos Accionistas.
-      </div>
+      {/* ── Outflow Alert ── */}
+      {outflowData && outflowData.today_egresos_count > 0 && !outflowDismissed && (
+        <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#92400e' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <AlertTriangle size={20} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div>
+                <strong>Hoy se detectaron {outflowData.today_egresos_count} salida(s) de dinero manual(es).</strong>
+                <div style={{ marginTop: '0.25rem' }}>
+                  Fueron alguna compra en tasa de ganancia o de pérdida? Puedes convertirlas en operaciones de compra de divisas desde la pestaña "Compra de Divisas" para registrar la tasa real y calcular el diferencial.
+                </div>
+                {outflowData.recent_manual_egresos?.length > 0 && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {outflowData.recent_manual_egresos.slice(0, 5).map((e) => (
+                      <span key={e.id} style={{ background: '#fde68a', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.78rem' }}>
+                        {fmtDate(e.flow_date)}: {fmtNum(e.amount_ves)} VES - {e.description || 'Sin descripción'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}><X size={16} /></button>
+          </div>
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1rem', borderBottom: '2px solid var(--gray-200)' }}>
@@ -492,7 +512,7 @@ export default function Treasury() {
             </div>
           </div>
         </>}
-        {!dashData && !dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>No hay datos disponibles. Usa "Resetear Demo" para crear datos de ejemplo.</div>}
+        {!dashData && !dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>No hay datos disponibles. Registra operaciones en "Compra de Divisas" o movimientos en "Posición Cambiaria".</div>}
       </>}
 
       {/* ══════════ TAB: COMPRA DE DIVISAS ══════════ */}
@@ -764,14 +784,16 @@ export default function Treasury() {
         </table>
       </div>
 
-      </>}
-
-      {repairMsg && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{repairMsg}</span>
-          <button onClick={() => setRepairMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600 }}><X size={14} /></button>
+      {/* Pagination */}
+      {pagination.total > 20 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+          <button className="btn btn-sm" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}>Anterior</button>
+          <span style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>Página {pagination.page} de {Math.ceil(pagination.total / 20)} ({pagination.total} operaciones)</span>
+          <button className="btn btn-sm" disabled={pagination.page >= Math.ceil(pagination.total / 20)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}>Siguiente</button>
         </div>
       )}
+
+      </>}
 
       {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
       {activeTab === 'posicion' && <>
@@ -894,7 +916,7 @@ export default function Treasury() {
         {/* ── Cash Flow Form ── */}
         {showCashForm && (
           <div className="card" style={{ marginBottom: '1rem' }}>
-            <h3 style={{ marginBottom: '0.75rem' }}>Registrar Movimiento VES</h3>
+            <h3 style={{ marginBottom: '0.75rem' }}>Registrar Movimiento</h3>
             {cashFormError && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>{cashFormError}</div>}
             <form onSubmit={handleCashCreate}>
               <div className="form-row">
@@ -905,36 +927,93 @@ export default function Treasury() {
                 <div className="form-group">
                   <label>Tipo *</label>
                   <select value={cashForm.flow_type} onChange={(e) => setCashForm({ ...cashForm, flow_type: e.target.value })}>
-                    <option value="ingreso">Ingreso (VES entran)</option>
-                    <option value="egreso">Egreso (VES salen)</option>
+                    <option value="ingreso">Ingreso (dinero entra)</option>
+                    <option value="egreso">Egreso (dinero sale)</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Monto VES *</label>
-                  <input type="number" step="0.01" value={cashForm.amount_ves} onChange={(e) => setCashForm({ ...cashForm, amount_ves: e.target.value })} required placeholder="Ej: 5000000" />
-                </div>
-                <div className="form-group">
-                  <label>Tasa BCV del día</label>
-                  <input type="number" step="0.000001" value={cashForm.bcv_rate} onChange={(e) => setCashForm({ ...cashForm, bcv_rate: e.target.value })} required style={{ background: '#f0f9ff' }} />
+                  <label>Moneda *</label>
+                  <select value={cashForm.currency_mode} onChange={(e) => setCashForm({ ...cashForm, currency_mode: e.target.value })}>
+                    <option value="usd">Dólares (USD) - sin tasa</option>
+                    <option value="ves">Bolívares (VES) - tasa BCV referencia</option>
+                    <option value="custom">Dólares (USD) - tasa personalizada</option>
+                  </select>
                 </div>
               </div>
-              {/* Live USD equivalent */}
-              {parseFloat(cashForm.amount_ves) > 0 && parseFloat(cashForm.bcv_rate) > 0 && (
-                <div style={{ padding: '0.75rem', background: '#f0f9ff', border: '1px solid var(--info)', borderRadius: '8px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  {cashForm.flow_type === 'ingreso'
-                    ? <ArrowUpCircle size={24} color="var(--success)" />
-                    : <ArrowDownCircle size={24} color="var(--danger)" />
-                  }
-                  <div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>
-                      {cashForm.flow_type === 'ingreso' ? 'Entran' : 'Salen'} {fmtNum(parseFloat(cashForm.amount_ves))} VES
-                    </div>
-                    <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 700, color: cashForm.flow_type === 'ingreso' ? 'var(--success)' : 'var(--danger)' }}>
-                      = {fmtNum(parseFloat(cashForm.amount_ves) / parseFloat(cashForm.bcv_rate))} USD a BCV ({fmtRate(parseFloat(cashForm.bcv_rate))})
+
+              <div className="form-row">
+                {/* USD input (for usd and custom modes) */}
+                {(cashForm.currency_mode === 'usd' || cashForm.currency_mode === 'custom') && (
+                  <div className="form-group">
+                    <label><DollarSign size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Monto USD *</label>
+                    <input type="number" step="0.01" value={cashForm.amount_usd} onChange={(e) => setCashForm({ ...cashForm, amount_usd: e.target.value })} required placeholder="Ej: 100" style={{ border: '2px solid var(--success)' }} />
+                  </div>
+                )}
+
+                {/* VES input (for ves mode) */}
+                {cashForm.currency_mode === 'ves' && (
+                  <div className="form-group">
+                    <label>Monto VES *</label>
+                    <input type="number" step="0.01" value={cashForm.amount_ves} onChange={(e) => setCashForm({ ...cashForm, amount_ves: e.target.value })} required placeholder="Ej: 5000000" />
+                  </div>
+                )}
+
+                {/* BCV rate (for ves mode and as reference for custom/usd) */}
+                {(cashForm.currency_mode === 'ves' || cashForm.currency_mode === 'custom') && (
+                  <div className="form-group">
+                    <label>Tasa BCV {cashForm.currency_mode === 'custom' ? '(referencia)' : '*'}</label>
+                    <input type="number" step="0.000001" value={cashForm.bcv_rate} onChange={(e) => setCashForm({ ...cashForm, bcv_rate: e.target.value })} required={cashForm.currency_mode === 'ves'} style={{ background: '#f0f9ff' }} />
+                  </div>
+                )}
+
+                {/* Custom rate (for custom mode) */}
+                {cashForm.currency_mode === 'custom' && (
+                  <div className="form-group">
+                    <label>Tasa Personalizada * <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>(USD x Tasa = VES)</span></label>
+                    <input type="number" step="0.000001" value={cashForm.custom_rate} onChange={(e) => setCashForm({ ...cashForm, custom_rate: e.target.value })} required placeholder="Ej: 55.00" style={{ border: '2px solid var(--warning)' }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Live preview */}
+              {(() => {
+                const mode = cashForm.currency_mode;
+                let previewUsd = 0, previewVes = 0, showPreview = false;
+                if (mode === 'usd' && parseFloat(cashForm.amount_usd) > 0) {
+                  previewUsd = parseFloat(cashForm.amount_usd);
+                  const bcv = parseFloat(cashForm.bcv_rate) || 0;
+                  previewVes = bcv > 0 ? previewUsd * bcv : 0;
+                  showPreview = true;
+                } else if (mode === 'custom' && parseFloat(cashForm.amount_usd) > 0 && parseFloat(cashForm.custom_rate) > 0) {
+                  previewUsd = parseFloat(cashForm.amount_usd);
+                  previewVes = previewUsd * parseFloat(cashForm.custom_rate);
+                  showPreview = true;
+                } else if (mode === 'ves' && parseFloat(cashForm.amount_ves) > 0 && parseFloat(cashForm.bcv_rate) > 0) {
+                  previewVes = parseFloat(cashForm.amount_ves);
+                  previewUsd = previewVes / parseFloat(cashForm.bcv_rate);
+                  showPreview = true;
+                }
+                if (!showPreview) return null;
+                return (
+                  <div style={{ padding: '0.75rem', background: '#f0f9ff', border: '1px solid var(--info)', borderRadius: '8px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {cashForm.flow_type === 'ingreso'
+                      ? <ArrowUpCircle size={24} color="var(--success)" />
+                      : <ArrowDownCircle size={24} color="var(--danger)" />
+                    }
+                    <div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 700, color: cashForm.flow_type === 'ingreso' ? 'var(--success)' : 'var(--danger)' }}>
+                        {mode === 'usd' ? `${fmtNum(previewUsd)} USD` : mode === 'custom' ? `${fmtNum(previewUsd)} USD = ${fmtNum(previewVes)} VES` : `${fmtNum(previewVes)} VES = ${fmtNum(previewUsd)} USD`}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>
+                        {mode === 'usd' && 'Operación directa en dólares, no requiere conversión de tasa.'}
+                        {mode === 'custom' && `Tasa personalizada: ${fmtRate(parseFloat(cashForm.custom_rate))}`}
+                        {mode === 'ves' && `Tasa BCV: ${fmtRate(parseFloat(cashForm.bcv_rate))}`}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Descripción</label>
@@ -1022,6 +1101,15 @@ export default function Treasury() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {cashPagination.total > 20 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+            <button className="btn btn-sm" disabled={cashPagination.page <= 1} onClick={() => setCashPagination((p) => ({ ...p, page: p.page - 1 }))}>Anterior</button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>Página {cashPagination.page} de {Math.ceil(cashPagination.total / 20)} ({cashPagination.total} movimientos)</span>
+            <button className="btn btn-sm" disabled={cashPagination.page >= Math.ceil(cashPagination.total / 20)} onClick={() => setCashPagination((p) => ({ ...p, page: p.page + 1 }))}>Siguiente</button>
+          </div>
+        )}
 
       </>}
 

@@ -299,6 +299,22 @@ router.post('/reset-demo', authenticate, authorize('admin', 'tesorero'), async (
   } catch (err) { next(err); }
 });
 
+// POST /treasury/clean-data - Clean ALL treasury data (no seeding)
+router.post('/clean-data', authenticate, authorize('admin'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.cleanAllData();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// GET /treasury/detect-outflows - Detect recent bank outflows for classification
+router.get('/detect-outflows', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.detectOutflows();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 // ─── Treasury Operations ───
 
 // GET /treasury - List operations

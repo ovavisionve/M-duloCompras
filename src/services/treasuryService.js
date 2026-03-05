@@ -448,27 +448,55 @@ async function getDashboardData() {
 // ─── Cash Flow / Posición Cambiaria ───
 
 /**
- * Record a manual VES entry or exit
+ * Record a manual VES/USD entry or exit
+ *
+ * currency_mode:
+ *  - 'usd': User enters amount in USD. No rate conversion needed, VES = amount_usd * bcv_rate
+ *  - 'ves': User enters amount in VES. BCV rate used to calculate USD equivalent.
+ *  - 'custom': User enters amount in USD + custom rate to calculate VES.
  */
 async function recordCashFlow(data, userId, ip) {
-  const { flow_date, flow_type, amount_ves, bcv_rate, description } = data;
+  const { flow_date, flow_type, amount_usd, amount_ves, bcv_rate, custom_rate, currency_mode, description } = data;
 
-  if (!flow_date || !flow_type || !amount_ves || !bcv_rate) {
-    throw new AppError('Fecha, tipo, monto VES y tasa BCV son requeridos', 400);
+  if (!flow_date || !flow_type) {
+    throw new AppError('Fecha y tipo son requeridos', 400);
   }
-
-  const ves = parseFloat(amount_ves);
-  const bcv = parseFloat(bcv_rate);
-  if (ves <= 0 || bcv <= 0) throw new AppError('Monto y tasa deben ser mayores a 0', 400);
   if (!['ingreso', 'egreso'].includes(flow_type)) throw new AppError('Tipo debe ser ingreso o egreso', 400);
 
-  const usdEquiv = round2(ves / bcv);
+  const mode = currency_mode || 'ves';
+  let ves, bcv, usdEquiv;
+
+  if (mode === 'usd') {
+    // Amount is in USD, no rate conversion needed for the USD side
+    const usd = parseFloat(amount_usd);
+    if (!usd || usd <= 0) throw new AppError('Ingrese monto USD válido', 400);
+    bcv = parseFloat(bcv_rate) || 0;
+    // VES equivalent at BCV (for reference)
+    ves = bcv > 0 ? round2(usd * bcv) : 0;
+    usdEquiv = round2(usd);
+  } else if (mode === 'custom') {
+    // Amount in USD + custom rate to get VES
+    const usd = parseFloat(amount_usd);
+    const cRate = parseFloat(custom_rate);
+    if (!usd || usd <= 0) throw new AppError('Ingrese monto USD válido', 400);
+    if (!cRate || cRate <= 0) throw new AppError('Ingrese tasa personalizada válida', 400);
+    bcv = parseFloat(bcv_rate) || 0;
+    ves = round2(usd * cRate);
+    usdEquiv = round2(usd);
+  } else {
+    // mode === 'ves' (original behavior)
+    ves = parseFloat(amount_ves);
+    bcv = parseFloat(bcv_rate);
+    if (!ves || ves <= 0) throw new AppError('Ingrese monto VES válido', 400);
+    if (!bcv || bcv <= 0) throw new AppError('La tasa BCV es requerida', 400);
+    usdEquiv = round2(ves / bcv);
+  }
 
   const [flow] = await db('treasury_cash_flows').insert({
     flow_date,
     flow_type,
-    amount_ves: ves,
-    bcv_rate: bcv,
+    amount_ves: ves || 0,
+    bcv_rate: bcv || 0,
     usd_equivalent: usdEquiv,
     description: description || null,
     reference_type: 'manual',
@@ -832,6 +860,65 @@ async function resetAndSeedDemo(userId) {
   return { message: 'Data limpiada. 10 operaciones + 3 ingresos manuales creados.', bcv_rate_used: bcv };
 }
 
+/**
+ * Clean all treasury data (no seeding). Returns empty state.
+ */
+async function cleanAllData() {
+  await db.transaction(async (trx) => {
+    await trx('treasury_cash_flows').del();
+    await trx('treasury_ledger').del();
+    await trx('treasury_operations').del();
+  });
+  return { message: 'Toda la data de tesorería ha sido eliminada.' };
+}
+
+/**
+ * Detect recent bank outflows that might need to be classified
+ * as gain/loss operations. Looks at cash flow egresos from
+ * the last 7 days that are manual (not from treasury operations).
+ */
+async function detectOutflows() {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const fromDate = sevenDaysAgo.toISOString().split('T')[0];
+
+  // Count today's egresos (manual ones, not auto-created from operations)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayEgresos = await db('treasury_cash_flows')
+    .where({ status: 'activo', flow_type: 'egreso', reference_type: 'manual' })
+    .where('flow_date', '=', todayStr)
+    .count('id as count')
+    .first();
+
+  // Recent unclassified manual egresos (could be purchases)
+  const recentManualEgresos = await db('treasury_cash_flows')
+    .where({ status: 'activo', flow_type: 'egreso', reference_type: 'manual' })
+    .where('flow_date', '>=', fromDate)
+    .orderBy('flow_date', 'desc')
+    .select('*');
+
+  // Recent operations count for context
+  const recentOpsCount = await db('treasury_operations')
+    .where('operation_date', '>=', fromDate)
+    .whereNot('status', 'anulada')
+    .count('id as count')
+    .first();
+
+  // Get today's BCV rate
+  let todayBcv = 0;
+  try {
+    const rateData = await exchangeRateService.getTodayRate();
+    if (rateData) todayBcv = parseFloat(rateData.rate);
+  } catch (e) { /* */ }
+
+  return {
+    today_egresos_count: parseInt(todayEgresos?.count || 0),
+    recent_manual_egresos: recentManualEgresos,
+    recent_operations_count: parseInt(recentOpsCount?.count || 0),
+    today_bcv_rate: todayBcv,
+  };
+}
+
 module.exports = {
   createOperation,
   voidOperation,
@@ -847,4 +934,6 @@ module.exports = {
   getRevaluationReport,
   repairMissingCashFlows,
   resetAndSeedDemo,
+  cleanAllData,
+  detectOutflows,
 };
