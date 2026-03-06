@@ -28,6 +28,9 @@ export default function Treasury() {
   // Suppliers
   const [suppliers, setSuppliers] = useState([]);
 
+  // Bank accounts
+  const [bankAccounts, setBankAccounts] = useState([]);
+
   // ─── Cash Position state ───
   const [cashPosition, setCashPosition] = useState(null);
   const [cashFlows, setCashFlows] = useState([]);
@@ -35,7 +38,7 @@ export default function Treasury() {
   const [cashPagination, setCashPagination] = useState({ page: 1, total: 0 });
   const [cashLoading, setCashLoading] = useState(false);
   const [showCashForm, setShowCashForm] = useState(false);
-  const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
+  const [cashForm, setCashForm] = useState({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '', bank_account_id: '' });
   const [cashFormError, setCashFormError] = useState('');
   const [cashSubmitting, setCashSubmitting] = useState(false);
 
@@ -78,9 +81,10 @@ export default function Treasury() {
 
   useEffect(() => { load(); }, [filters, pagination.page]);
 
-  // Load suppliers once
+  // Load suppliers and bank accounts once
   useEffect(() => {
     api.get('/treasury/suppliers').then((r) => setSuppliers(r.data.data || [])).catch(() => {});
+    api.get('/banking/bank-accounts').then((r) => setBankAccounts(r.data.data || [])).catch(() => {});
   }, []);
 
   // Fetch Binance P2P rate on mount (and every 30 min)
@@ -114,8 +118,8 @@ export default function Treasury() {
   };
 
   useEffect(() => {
-    if (activeTab === 'dashboard' && !dashData) loadDashboard();
-  }, [activeTab, dashData]);
+    if (activeTab === 'dashboard') loadDashboard();
+  }, [activeTab]);
 
   // ─── Download helpers ───
   const downloadFile = (url, filename) => {
@@ -191,7 +195,7 @@ export default function Treasury() {
       if (payload.currency_mode === 'binance') payload.currency_mode = 'custom';
       await api.post('/treasury/cash/flows', payload);
       setShowCashForm(false);
-      setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
+      setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '', bank_account_id: '' });
       loadCashPosition(); loadCashFlows(); loadOutflows();
     } catch (err) {
       setCashFormError(err.response?.data?.error?.message || 'Error al registrar movimiento');
@@ -315,7 +319,7 @@ export default function Treasury() {
               <div style={{ flex: 1 }}>
                 <strong>Hoy entraron {outflowData.today_ingresos_count} ingreso(s) de dinero.</strong>
                 <div style={{ marginTop: '0.25rem' }}>
-                  Fueron venta con ganancia o pérdida cambiaria? Clasifícalos para calcular el resultado:
+                  Venta de boleto con ganancia (se queda como ingreso) o compra de divisas?
                 </div>
                 {outflowData.recent_manual_ingresos?.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
@@ -328,25 +332,24 @@ export default function Treasury() {
                           className="btn btn-sm"
                           style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
                           onClick={() => {
-                            setActiveTab('divisas');
-                            setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Venta: ${ingreso.description || ''}`.trim() }));
                             setOutflowDismissed(true);
                           }}
+                          title="Es venta de boleto - ya está registrado como ingreso en posición cambiaria"
                         >
-                          Ganancia
+                          Venta Boleto (OK)
                         </button>
                         <button
                           className="btn btn-sm"
-                          style={{ background: '#dc2626', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
                           onClick={() => {
                             setActiveTab('divisas');
                             setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Venta: ${ingreso.description || ''}`.trim() }));
+                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Compra USD: ${ingreso.description || ''}`.trim() }));
                             setOutflowDismissed(true);
                           }}
+                          title="Registrar como compra de divisas para calcular diferencial"
                         >
-                          Pérdida
+                          Compra Divisas
                         </button>
                       </div>
                     ))}
@@ -368,7 +371,7 @@ export default function Treasury() {
               <div style={{ flex: 1 }}>
                 <strong>Hoy hubo {outflowData.today_egresos_count} salida(s) de dinero.</strong>
                 <div style={{ marginTop: '0.25rem' }}>
-                  Fueron alguna compra en tasa de ganancia o de pérdida? Puedes registrarlas rápidamente:
+                  Fue una compra de divisas? Regístrala para calcular el diferencial (ganancia o pérdida):
                 </div>
                 {outflowData.recent_manual_egresos?.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
@@ -379,27 +382,22 @@ export default function Treasury() {
                         </span>
                         <button
                           className="btn btn-sm"
-                          style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
                           onClick={() => {
                             setActiveTab('divisas');
                             setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: egreso.description || '' }));
+                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: `Compra USD: ${egreso.description || ''}`.trim() }));
                             setOutflowDismissed(true);
                           }}
                         >
-                          Ganancia
+                          Registrar Compra Divisas
                         </button>
                         <button
                           className="btn btn-sm"
-                          style={{ background: '#dc2626', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => {
-                            setActiveTab('divisas');
-                            setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: egreso.description || '' }));
-                            setOutflowDismissed(true);
-                          }}
+                          style={{ background: 'transparent', color: '#92400e', border: '1px solid #d97706', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => setOutflowDismissed(true)}
                         >
-                          Pérdida
+                          Ignorar
                         </button>
                       </div>
                     ))}
@@ -964,6 +962,13 @@ export default function Treasury() {
                     <option value="ves">Bolívares (VES) - tasa BCV referencia</option>
                     <option value="binance">Dólares (USD) - tasa Binance P2P</option>
                     <option value="custom">Dólares (USD) - tasa personalizada</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Banco</label>
+                  <select value={cashForm.bank_account_id} onChange={(e) => setCashForm({ ...cashForm, bank_account_id: e.target.value })}>
+                    <option value="">-- Sin banco (solo tesorería) --</option>
+                    {bankAccounts.map((ba) => <option key={ba.id} value={ba.id}>{ba.bank_name} ({ba.currency}) - {ba.account_number}</option>)}
                   </select>
                 </div>
               </div>

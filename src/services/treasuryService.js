@@ -477,7 +477,7 @@ async function getDashboardData() {
  *  - 'custom': User enters amount in USD + custom rate to calculate VES.
  */
 async function recordCashFlow(data, userId, ip) {
-  const { flow_date, flow_type, amount_usd, amount_ves, bcv_rate, custom_rate, currency_mode, description } = data;
+  const { flow_date, flow_type, amount_usd, amount_ves, bcv_rate, custom_rate, currency_mode, description, bank_account_id } = data;
 
   if (!flow_date || !flow_type) {
     throw new AppError('Fecha y tipo son requeridos', 400);
@@ -513,9 +513,31 @@ async function recordCashFlow(data, userId, ip) {
     usdEquiv = round2(ves / bcv);
   }
 
+  // Also create a bank_movement if bank_account_id is provided
+  if (bank_account_id) {
+    const account = await db('bank_accounts').where({ id: bank_account_id }).first();
+    if (account) {
+      await db('bank_movements').insert({
+        bank_account_id,
+        movement_date: flow_date,
+        description: description || (flow_type === 'ingreso' ? 'Ingreso tesorería' : 'Egreso tesorería'),
+        debit: flow_type === 'egreso' ? ves : 0,
+        credit: flow_type === 'ingreso' ? ves : 0,
+        reconciliation_status: 'conciliado',
+      });
+      // Update current_balance
+      const balDelta = flow_type === 'ingreso' ? ves : -ves;
+      await db('bank_accounts').where({ id: bank_account_id }).update({
+        current_balance: db.raw(`current_balance + ${balDelta}`),
+        updated_at: new Date(),
+      });
+    }
+  }
+
   const [flow] = await db('treasury_cash_flows').insert({
     flow_date,
     flow_type,
+    bank_account_id: bank_account_id || null,
     amount_ves: ves || 0,
     bcv_rate: bcv || 0,
     usd_equivalent: usdEquiv,
