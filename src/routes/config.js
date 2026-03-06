@@ -39,7 +39,8 @@ const auditService = require('../services/auditService');
  */
 router.get('/expense-categories', authenticate, async (req, res, next) => {
   try {
-    const categories = await db('expense_categories').where({ is_active: true }).orderBy('name');
+    const showAll = req.query.all === 'true';
+    const categories = await db('expense_categories').modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
     res.json({ success: true, data: categories });
   } catch (err) { next(err); }
 });
@@ -99,6 +100,34 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
   } catch (err) { next(err); }
 });
 
+// PATCH /config/expense-categories/:id/toggle - Toggle active status
+router.patch('/expense-categories/:id/toggle', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
+  try {
+    const cat = await db('expense_categories').where({ id: req.params.id }).first();
+    if (!cat) throw new AppError('Categoría no encontrada', 404);
+    const [updated] = await db('expense_categories').where({ id: req.params.id })
+      .update({ is_active: !cat.is_active, updated_at: new Date() }).returning('*');
+    res.json({ success: true, data: updated });
+  } catch (err) { next(err); }
+});
+
+// DELETE /config/expense-categories/:id - Soft delete (set inactive)
+router.delete('/expense-categories/:id', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
+  try {
+    const cat = await db('expense_categories').where({ id: req.params.id }).first();
+    if (!cat) throw new AppError('Categoría no encontrada', 404);
+    // Check if used by any invoice
+    const used = await db('invoices').where({ expense_category_id: req.params.id }).first();
+    if (used) {
+      // Soft delete — just deactivate
+      await db('expense_categories').where({ id: req.params.id }).update({ is_active: false, updated_at: new Date() });
+      return res.json({ success: true, message: 'Categoría desactivada (tiene facturas asociadas)' });
+    }
+    await db('expense_categories').where({ id: req.params.id }).del();
+    res.json({ success: true, message: 'Categoría eliminada' });
+  } catch (err) { next(err); }
+});
+
 /**
  * @swagger
  * /config/cost-centers:
@@ -134,7 +163,8 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
  */
 router.get('/cost-centers', authenticate, async (req, res, next) => {
   try {
-    const centers = await db('cost_centers').where({ is_active: true }).orderBy('name');
+    const showAll = req.query.all === 'true';
+    const centers = await db('cost_centers').modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
     res.json({ success: true, data: centers });
   } catch (err) { next(err); }
 });
@@ -191,6 +221,32 @@ router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async
     if (exists) throw new AppError('Ya existe un centro de costo con ese nombre o código', 409);
     const [center] = await db('cost_centers').insert({ name, code, description }).returning('*');
     res.status(201).json({ success: true, data: center });
+  } catch (err) { next(err); }
+});
+
+// PATCH /config/cost-centers/:id/toggle - Toggle active status
+router.patch('/cost-centers/:id/toggle', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
+  try {
+    const cc = await db('cost_centers').where({ id: req.params.id }).first();
+    if (!cc) throw new AppError('Centro de costo no encontrado', 404);
+    const [updated] = await db('cost_centers').where({ id: req.params.id })
+      .update({ is_active: !cc.is_active, updated_at: new Date() }).returning('*');
+    res.json({ success: true, data: updated });
+  } catch (err) { next(err); }
+});
+
+// DELETE /config/cost-centers/:id - Soft delete (set inactive)
+router.delete('/cost-centers/:id', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
+  try {
+    const cc = await db('cost_centers').where({ id: req.params.id }).first();
+    if (!cc) throw new AppError('Centro de costo no encontrado', 404);
+    const used = await db('invoices').where({ cost_center_id: req.params.id }).first();
+    if (used) {
+      await db('cost_centers').where({ id: req.params.id }).update({ is_active: false, updated_at: new Date() });
+      return res.json({ success: true, message: 'Centro de costo desactivado (tiene facturas asociadas)' });
+    }
+    await db('cost_centers').where({ id: req.params.id }).del();
+    res.json({ success: true, message: 'Centro de costo eliminado' });
   } catch (err) { next(err); }
 });
 

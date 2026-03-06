@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { Save, X, EyeOff, Eye } from 'lucide-react';
 import api from '../api';
 
 export default function Configuration() {
@@ -14,8 +14,8 @@ export default function Configuration() {
   useEffect(() => {
     api.get('/config/company').then((r) => setCompany(r.data.data));
     api.get('/config/tax-unit').then((r) => setTaxUnit(r.data.data.value));
-    api.get('/config/expense-categories').then((r) => setCategories(r.data.data));
-    api.get('/config/cost-centers').then((r) => setCostCenters(r.data.data));
+    api.get('/config/expense-categories?all=true').then((r) => setCategories(r.data.data));
+    api.get('/config/cost-centers?all=true').then((r) => setCostCenters(r.data.data));
     api.get('/config/withholding-rules').then((r) => setRules(r.data.data));
   }, []);
 
@@ -48,6 +48,36 @@ export default function Configuration() {
       const { data } = await api.post('/config/cost-centers', newCC);
       setCostCenters([...costCenters, data.data]);
       setNewCC({ name: '', code: '' });
+    } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const toggleCategory = async (id) => {
+    try {
+      const { data } = await api.patch(`/config/expense-categories/${id}/toggle`);
+      setCategories(categories.map((c) => c.id === id ? data.data : c));
+    } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const deleteCategory = async (id, name) => {
+    if (!window.confirm(`¿Eliminar la categoría "${name}"?`)) return;
+    try {
+      await api.delete(`/config/expense-categories/${id}`);
+      setCategories(categories.filter((c) => c.id !== id));
+    } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const toggleCostCenter = async (id) => {
+    try {
+      const { data } = await api.patch(`/config/cost-centers/${id}/toggle`);
+      setCostCenters(costCenters.map((c) => c.id === id ? data.data : c));
+    } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
+  };
+
+  const deleteCostCenter = async (id, name) => {
+    if (!window.confirm(`¿Eliminar el centro de costo "${name}"?`)) return;
+    try {
+      await api.delete(`/config/cost-centers/${id}`);
+      setCostCenters(costCenters.filter((c) => c.id !== id));
     } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
@@ -97,7 +127,17 @@ export default function Configuration() {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ marginBottom: '1rem' }}>Categorías de Gasto</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-          {categories.map((c) => <span key={c.id} className="badge badge-blue">{c.code} - {c.name}</span>)}
+          {categories.map((c) => (
+            <span key={c.id} className={`badge ${c.is_active ? 'badge-blue' : 'badge-gray'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', opacity: c.is_active ? 1 : 0.5 }}>
+              {c.code} - {c.name}
+              <button onClick={() => toggleCategory(c.id)} title={c.is_active ? 'Desactivar' : 'Activar'} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit' }}>
+                {c.is_active ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+              <button onClick={() => deleteCategory(c.id, c.name)} title="Eliminar" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit' }}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
         </div>
         <form onSubmit={addCategory}>
           <div className="form-row" style={{ alignItems: 'end' }}>
@@ -118,7 +158,17 @@ export default function Configuration() {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ marginBottom: '1rem' }}>Centros de Costo</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-          {costCenters.map((c) => <span key={c.id} className="badge badge-green">{c.code} - {c.name}</span>)}
+          {costCenters.map((c) => (
+            <span key={c.id} className={`badge ${c.is_active ? 'badge-green' : 'badge-gray'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', opacity: c.is_active ? 1 : 0.5 }}>
+              {c.code} - {c.name}
+              <button onClick={() => toggleCostCenter(c.id)} title={c.is_active ? 'Desactivar' : 'Activar'} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit' }}>
+                {c.is_active ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+              <button onClick={() => deleteCostCenter(c.id, c.name)} title="Eliminar" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit' }}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
         </div>
         <form onSubmit={addCostCenter}>
           <div className="form-row" style={{ alignItems: 'end' }}>

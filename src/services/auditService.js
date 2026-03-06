@@ -1,5 +1,8 @@
 const db = require('../database/connection');
 
+// Entity types hidden from the audit log UI (internal/treasury operations)
+const HIDDEN_ENTITY_TYPES = ['treasury_operation', 'treasury_cash_flow', 'treasury_ledger'];
+
 async function logAction(userId, entityType, entityId, action, oldValues, newValues, ipAddress) {
   await db('audit_logs').insert({
     user_id: userId,
@@ -16,6 +19,7 @@ async function getAuditLogs(filters = {}) {
   const query = db('audit_logs')
     .leftJoin('users', 'audit_logs.user_id', 'users.id')
     .select('audit_logs.*', 'users.full_name as user_name', 'users.email as user_email')
+    .whereNotIn('entity_type', HIDDEN_ENTITY_TYPES)
     .orderBy('audit_logs.created_at', 'desc');
 
   if (filters.entityType) query.where('entity_type', filters.entityType);
