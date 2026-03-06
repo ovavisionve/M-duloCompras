@@ -586,7 +586,28 @@ export default function Treasury() {
             </div>
           </div>
         </>}
-        {!dashData && !dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>No hay datos disponibles. Registra operaciones en "Compra de Divisas" o movimientos en "Posición Cambiaria".</div>}
+        {(!dashData || (dashData && dashData.kpis.operations_count === 0)) && !dashLoading && (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <div style={{ color: 'var(--gray-400)', marginBottom: '1rem' }}>
+              {!dashData ? 'No hay datos disponibles.' : 'No hay operaciones este mes.'}
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (!window.confirm('Esto cargará datos de prueba: 3 bancos, 11 movimientos bancarios, 6 ingresos de boletos, 2 compras de divisas y tasas BCV. ¿Continuar?')) return;
+                api.post('/treasury/seed-test-data')
+                  .then((r) => {
+                    alert(`Datos cargados: ${r.data.data.bank_accounts} bancos, ${r.data.data.bank_movements} movimientos, ${r.data.data.cash_flows} flujos, ${r.data.data.operations} operaciones`);
+                    loadDashboard();
+                    setDashData(null);
+                  })
+                  .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar datos'));
+              }}
+            >
+              Cargar Datos de Prueba (WEFLY2022)
+            </button>
+          </div>
+        )}
       </>}
 
       {/* ══════════ TAB: COMPRA DE DIVISAS ══════════ */}

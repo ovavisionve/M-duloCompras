@@ -999,4 +999,122 @@ module.exports = {
   resetAndSeedDemo,
   cleanAllData,
   detectOutflows,
+  seedTestBankData,
 };
+
+/**
+ * Seed realistic test data: bank accounts, movements, treasury operations, cash flows
+ * Simulates WEFLY2022 scenario with ticket sales + USD purchases
+ */
+async function seedTestBankData(userId) {
+  const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0];
+  const fourDaysAgo = new Date(Date.now() - 4 * 86400000).toISOString().split('T')[0];
+
+  const results = { bank_accounts: 0, bank_movements: 0, cash_flows: 0, operations: 0, exchange_rates: 0 };
+
+  // ─── 1. Ensure bank accounts ───
+  async function ensureBank(name, type, number, currency) {
+    let acc = await db('bank_accounts').where({ account_number: number }).first();
+    if (!acc) {
+      [acc] = await db('bank_accounts').insert({ bank_name: name, account_type: type, account_number: number, currency, initial_balance: 0, current_balance: 0 }).returning('*');
+      results.bank_accounts++;
+    }
+    return acc;
+  }
+
+  const bfc = await ensureBank('BFC Banco Fondo Comun', 'corriente', '0151-0001-00-0000001', 'VES');
+  const chase = await ensureBank('Chase Bank', 'corriente', 'CHASE-USD-001', 'USD');
+  await ensureBank('PNC Bank', 'corriente', 'PNC-USD-001', 'USD');
+
+  const BCV = 431.01;
+  const BINANCE = 629.00;
+
+  // ─── 2. Bank movements ───
+  const movs = [
+    { bank_account_id: bfc.id, movement_date: fourDaysAgo, reference: 'PM-20260302-001', description: 'Pago boleto CCS-MIA - Rodriguez', debit: 0, credit: 314500, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: threeDaysAgo, reference: 'PM-20260303-001', description: 'Pago boleto CCS-BOG - Martinez', debit: 0, credit: 188700, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: twoDaysAgo, reference: 'PM-20260304-001', description: 'Pago boleto CCS-PTY - Lopez', debit: 0, credit: 440300, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: twoDaysAgo, reference: 'TR-20260304-002', description: 'Pago 2 boletos CCS-SCL - Grupo Empresarial', debit: 0, credit: 881000, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: yesterday, reference: 'PM-20260305-001', description: 'Pago boleto CCS-LIM - Fernandez', debit: 0, credit: 251600, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: yesterday, reference: 'COMP-USD-001', description: 'Compra USD - Transferencia cambista', debit: 500000, credit: 0, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: today, reference: 'PM-20260306-001', description: 'Pago boleto CCS-MDE - Gomez', debit: 0, credit: 125800, reconciliation_status: 'pendiente' },
+    { bank_account_id: bfc.id, movement_date: today, reference: 'COMP-USD-002', description: 'Compra USD - Pago movil cambista', debit: 300000, credit: 0, reconciliation_status: 'pendiente' },
+    { bank_account_id: chase.id, movement_date: yesterday, reference: 'ZELLE-001', description: 'Zelle - USD cambista (500K VES)', debit: 0, credit: 794.91, reconciliation_status: 'pendiente' },
+    { bank_account_id: chase.id, movement_date: today, reference: 'ZELLE-002', description: 'Zelle - USD cambista (300K VES)', debit: 0, credit: 476.95, reconciliation_status: 'pendiente' },
+    { bank_account_id: chase.id, movement_date: twoDaysAgo, reference: 'WIRE-KIU-001', description: 'Pago aerolinea KIU - Liquidacion semanal', debit: 2500, credit: 0, reconciliation_status: 'pendiente' },
+  ];
+  for (const m of movs) {
+    const exists = await db('bank_movements').where({ reference: m.reference, bank_account_id: m.bank_account_id }).first();
+    if (!exists) { await db('bank_movements').insert(m); results.bank_movements++; }
+  }
+  await db('bank_accounts').where({ id: bfc.id }).update({ current_balance: 1401900 });
+  await db('bank_accounts').where({ id: chase.id }).update({ current_balance: round2(1271.86 - 2500) });
+
+  // ─── 3. Cash flows (ticket income) ───
+  const flows = [
+    { flow_date: fourDaysAgo, flow_type: 'ingreso', amount_ves: 314500, bcv_rate: BCV, usd_equivalent: round2(314500 / BINANCE), description: 'Boleto CCS-MIA - Rodriguez (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+    { flow_date: threeDaysAgo, flow_type: 'ingreso', amount_ves: 188700, bcv_rate: BCV, usd_equivalent: round2(188700 / BINANCE), description: 'Boleto CCS-BOG - Martinez (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+    { flow_date: twoDaysAgo, flow_type: 'ingreso', amount_ves: 440300, bcv_rate: BCV, usd_equivalent: round2(440300 / BINANCE), description: 'Boleto CCS-PTY - Lopez (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+    { flow_date: twoDaysAgo, flow_type: 'ingreso', amount_ves: 881000, bcv_rate: BCV, usd_equivalent: round2(881000 / BINANCE), description: '2 Boletos CCS-SCL - Grupo Empresarial (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+    { flow_date: yesterday, flow_type: 'ingreso', amount_ves: 251600, bcv_rate: BCV, usd_equivalent: round2(251600 / BINANCE), description: 'Boleto CCS-LIM - Fernandez (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+    { flow_date: today, flow_type: 'ingreso', amount_ves: 125800, bcv_rate: BCV, usd_equivalent: round2(125800 / BINANCE), description: 'Boleto CCS-MDE - Gomez (tasa Binance 629)', reference_type: 'manual', status: 'activo', created_by: userId, bank_account_id: bfc.id },
+  ];
+  for (const f of flows) {
+    const exists = await db('treasury_cash_flows').where({ description: f.description, flow_date: f.flow_date }).first();
+    if (!exists) { await db('treasury_cash_flows').insert(f); results.cash_flows++; }
+  }
+
+  // ─── 4. Treasury operations (compra de divisas) ───
+  await ensureInternalAccounts();
+  const accs = await db('internal_accounts').whereIn('code', ['PREST_ACC', 'BANCO_VES', 'BANCO_USD', 'CAJA_USD', 'GAN_CAMB', 'PERD_CAMB']);
+  const getAcc = (code) => accs.find((a) => a.code === code);
+
+  const ops = [
+    { operation_date: yesterday, amount_ves: 500000, amount_usd: round2(500000 / BINANCE), bcv_rate: BCV, purchase_rate: BINANCE, purchase_type: 'pago_movil', destination_type: 'banco_usd', supplier_name: 'Cambista Carlos', description: 'Compra USD para operaciones' },
+    { operation_date: today, amount_ves: 300000, amount_usd: round2(300000 / BINANCE), bcv_rate: BCV, purchase_rate: BINANCE, purchase_type: 'pago_movil', destination_type: 'banco_usd', supplier_name: 'Cambista Carlos', description: 'Compra USD para pago aerolinea' },
+  ];
+  for (const op of ops) {
+    const exists = await db('treasury_operations').where({ operation_date: op.operation_date, amount_ves: op.amount_ves }).first();
+    if (exists) continue;
+
+    const usdBcv = round2(op.amount_ves / BCV);
+    const diffUsd = round2(op.amount_usd - usdBcv);
+    const diffVes = round2(diffUsd * BCV);
+
+    const [inserted] = await db('treasury_operations').insert({
+      ...op, diff_usd: diffUsd, exchange_difference: diffVes, status: 'completada', created_by: userId,
+    }).returning('*');
+
+    const ledger = [
+      { operation_id: inserted.id, account_id: getAcc('PREST_ACC').id, movement_type: 'debito', amount: op.amount_ves, currency: 'VES', description: 'Salida VES - Compra USD', movement_date: op.operation_date },
+      { operation_id: inserted.id, account_id: getAcc('BANCO_VES').id, movement_type: 'credito', amount: op.amount_ves, currency: 'VES', description: 'Salida banco VES', movement_date: op.operation_date },
+      { operation_id: inserted.id, account_id: getAcc('BANCO_USD').id, movement_type: 'debito', amount: op.amount_usd, currency: 'USD', description: `Ingreso ${op.amount_usd} USD (tasa ${BINANCE})`, movement_date: op.operation_date },
+      { operation_id: inserted.id, account_id: getAcc('PREST_ACC').id, movement_type: 'credito', amount: op.amount_ves, currency: 'VES', description: 'Liquidacion prestamo', movement_date: op.operation_date },
+    ];
+    if (diffVes !== 0) {
+      ledger.push({ operation_id: inserted.id, account_id: getAcc(diffVes > 0 ? 'GAN_CAMB' : 'PERD_CAMB').id, movement_type: diffVes > 0 ? 'credito' : 'debito', amount: Math.abs(diffVes), currency: 'VES', description: diffVes > 0 ? 'Ganancia cambiaria' : 'Perdida cambiaria', movement_date: op.operation_date });
+    }
+    await db('treasury_ledger').insert(ledger);
+
+    await db('treasury_cash_flows').insert({
+      flow_date: op.operation_date, flow_type: 'egreso', amount_ves: op.amount_ves, bcv_rate: BCV,
+      usd_equivalent: op.amount_usd, description: `Compra USD: ${op.amount_ves} VES a tasa ${BINANCE}`,
+      reference_type: 'treasury_operation', reference_id: inserted.id, status: 'activo', created_by: userId, bank_account_id: bfc.id,
+    });
+    results.operations++;
+  }
+
+  // ─── 5. Exchange rates ───
+  for (const r of [
+    { rate_date: fourDaysAgo, rate: 430.50 }, { rate_date: threeDaysAgo, rate: 430.75 },
+    { rate_date: twoDaysAgo, rate: 431.01 }, { rate_date: yesterday, rate: 431.01 }, { rate_date: today, rate: 431.01 },
+  ]) {
+    const exists = await db('exchange_rates').where({ rate_date: r.rate_date }).first();
+    if (!exists) { await db('exchange_rates').insert({ ...r, source: 'bcv_api' }); results.exchange_rates++; }
+  }
+
+  return { message: 'Datos de prueba cargados', ...results };
+}

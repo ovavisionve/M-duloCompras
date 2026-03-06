@@ -307,6 +307,14 @@ router.post('/clean-data', authenticate, authorize('admin'), async (req, res, ne
   } catch (err) { next(err); }
 });
 
+// POST /treasury/seed-test-data - Load realistic test data (bank movements + treasury)
+router.post('/seed-test-data', authenticate, authorize('admin'), async (req, res, next) => {
+  try {
+    const data = await treasuryService.seedTestBankData(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 // GET /treasury/detect-outflows - Detect recent bank outflows for classification
 router.get('/detect-outflows', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
