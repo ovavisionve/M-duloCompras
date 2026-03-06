@@ -44,7 +44,7 @@ export default function Treasury() {
 
   // ─── Outflow detection state ───
   const [outflowData, setOutflowData] = useState(null);
-  const [outflowDismissed, setOutflowDismissed] = useState(false);
+  const [dismissedFlowIds, setDismissedFlowIds] = useState(new Set());
 
   // ─── Binance rate state ───
   const [binanceRate, setBinanceRate] = useState(null);
@@ -311,7 +311,7 @@ export default function Treasury() {
       </div>
 
       {/* ── Inflow Alert (money coming in) ── */}
-      {outflowData && outflowData.today_ingresos_count > 0 && !outflowDismissed && (
+      {outflowData && outflowData.recent_manual_ingresos?.filter((i) => !dismissedFlowIds.has(i.id)).length > 0 && (
         <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#166534' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flex: 1 }}>
@@ -321,49 +321,47 @@ export default function Treasury() {
                 <div style={{ marginTop: '0.25rem' }}>
                   Venta de boleto con ganancia (se queda como ingreso) o compra de divisas?
                 </div>
-                {outflowData.recent_manual_ingresos?.length > 0 && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    {outflowData.recent_manual_ingresos.slice(0, 5).map((ingreso) => (
-                      <div key={ingreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#bbf7d0', borderRadius: '6px', marginBottom: '0.3rem' }}>
-                        <span style={{ flex: 1, fontSize: '0.82rem' }}>
-                          {fmtDate(ingreso.flow_date)}: <strong>{fmtNum(ingreso.amount_ves)} VES</strong> ({fmtNum(ingreso.usd_equivalent)} USD) - {ingreso.description || 'Sin descripción'}
-                        </span>
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => {
-                            setOutflowDismissed(true);
-                          }}
-                          title="Es venta de boleto - ya está registrado como ingreso en posición cambiaria"
-                        >
-                          Venta Boleto (OK)
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => {
-                            setActiveTab('divisas');
-                            setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Compra USD: ${ingreso.description || ''}`.trim() }));
-                            setOutflowDismissed(true);
-                          }}
-                          title="Registrar como compra de divisas para calcular diferencial"
-                        >
-                          Compra Divisas
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ marginTop: '0.5rem' }}>
+                  {outflowData.recent_manual_ingresos.filter((i) => !dismissedFlowIds.has(i.id)).slice(0, 5).map((ingreso) => (
+                    <div key={ingreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#bbf7d0', borderRadius: '6px', marginBottom: '0.3rem' }}>
+                      <span style={{ flex: 1, fontSize: '0.82rem' }}>
+                        {fmtDate(ingreso.flow_date)}: <strong>{fmtNum(ingreso.amount_ves)} VES</strong> ({fmtNum(ingreso.usd_equivalent)} USD) - {ingreso.description || 'Sin descripción'}
+                      </span>
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        onClick={() => {
+                          setDismissedFlowIds((prev) => new Set([...prev, ingreso.id]));
+                        }}
+                        title="Es venta de boleto - ya está registrado como ingreso en posición cambiaria"
+                      >
+                        Venta Boleto (OK)
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        onClick={() => {
+                          setActiveTab('divisas');
+                          setShowForm(true);
+                          setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Compra USD: ${ingreso.description || ''}`.trim() }));
+                          setDismissedFlowIds((prev) => new Set([...prev, ingreso.id]));
+                        }}
+                        title="Registrar como compra de divisas para calcular diferencial"
+                      >
+                        Compra Divisas
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
+            <button onClick={() => setDismissedFlowIds((prev) => new Set([...prev, ...outflowData.recent_manual_ingresos.map((i) => i.id)]))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
           </div>
         </div>
       )}
 
       {/* ── Outflow Alert ── */}
-      {outflowData && outflowData.today_egresos_count > 0 && !outflowDismissed && (
+      {outflowData && outflowData.recent_manual_egresos?.filter((e) => !dismissedFlowIds.has(e.id)).length > 0 && (
         <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#92400e' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flex: 1 }}>
@@ -373,39 +371,37 @@ export default function Treasury() {
                 <div style={{ marginTop: '0.25rem' }}>
                   Fue una compra de divisas? Regístrala para calcular el diferencial (ganancia o pérdida):
                 </div>
-                {outflowData.recent_manual_egresos?.length > 0 && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    {outflowData.recent_manual_egresos.slice(0, 5).map((egreso) => (
-                      <div key={egreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#fde68a', borderRadius: '6px', marginBottom: '0.3rem' }}>
-                        <span style={{ flex: 1, fontSize: '0.82rem' }}>
-                          {fmtDate(egreso.flow_date)}: <strong>{fmtNum(egreso.amount_ves)} VES</strong> - {egreso.description || 'Sin descripción'}
-                        </span>
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => {
-                            setActiveTab('divisas');
-                            setShowForm(true);
-                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: `Compra USD: ${egreso.description || ''}`.trim() }));
-                            setOutflowDismissed(true);
-                          }}
-                        >
-                          Registrar Compra Divisas
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: 'transparent', color: '#92400e', border: '1px solid #d97706', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => setOutflowDismissed(true)}
-                        >
-                          Ignorar
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ marginTop: '0.5rem' }}>
+                  {outflowData.recent_manual_egresos.filter((e) => !dismissedFlowIds.has(e.id)).slice(0, 5).map((egreso) => (
+                    <div key={egreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#fde68a', borderRadius: '6px', marginBottom: '0.3rem' }}>
+                      <span style={{ flex: 1, fontSize: '0.82rem' }}>
+                        {fmtDate(egreso.flow_date)}: <strong>{fmtNum(egreso.amount_ves)} VES</strong> - {egreso.description || 'Sin descripción'}
+                      </span>
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#2563eb', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        onClick={() => {
+                          setActiveTab('divisas');
+                          setShowForm(true);
+                          setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: `Compra USD: ${egreso.description || ''}`.trim() }));
+                          setDismissedFlowIds((prev) => new Set([...prev, egreso.id]));
+                        }}
+                      >
+                        Registrar Compra Divisas
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: 'transparent', color: '#92400e', border: '1px solid #d97706', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        onClick={() => setDismissedFlowIds((prev) => new Set([...prev, egreso.id]))}
+                      >
+                        Ignorar
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
+            <button onClick={() => setDismissedFlowIds((prev) => new Set([...prev, ...outflowData.recent_manual_egresos.map((e) => e.id)]))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
           </div>
         </div>
       )}
