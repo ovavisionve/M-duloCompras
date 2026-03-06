@@ -4,6 +4,24 @@ const { AppError } = require('../middleware/errorHandler');
 const auditService = require('./auditService');
 const exchangeRateService = require('./exchangeRateService');
 
+const INTERNAL_ACCOUNTS_SEED = [
+  { code: 'BANCO_VES', name: 'Banco VES (Salida)', type: 'activo', currency: 'VES' },
+  { code: 'BANCO_USD', name: 'Banco USD (Entrada)', type: 'activo', currency: 'USD' },
+  { code: 'CAJA_USD', name: 'Caja USD', type: 'activo', currency: 'USD' },
+  { code: 'PREST_ACC', name: 'Préstamos Accionistas', type: 'pasivo', currency: 'VES' },
+  { code: 'GAN_CAMB', name: 'Ganancia Cambiaria', type: 'ingreso', currency: 'VES' },
+  { code: 'PERD_CAMB', name: 'Pérdida Cambiaria', type: 'gasto', currency: 'VES' },
+];
+
+async function ensureInternalAccounts() {
+  const existing = await db('internal_accounts').select('code');
+  const existingCodes = existing.map((a) => a.code);
+  const missing = INTERNAL_ACCOUNTS_SEED.filter((a) => !existingCodes.includes(a.code));
+  if (missing.length > 0) {
+    await db('internal_accounts').insert(missing);
+  }
+}
+
 /**
  * Create a treasury operation (single step)
  *
@@ -79,12 +97,15 @@ async function createOperation(data, userId, ip) {
       created_by: userId,
     }).returning('*');
 
+    // Ensure internal accounts exist (auto-seed if missing)
+    await ensureInternalAccounts();
+
     // Ledger entries
     const accounts = await trx('internal_accounts')
       .whereIn('code', ['PREST_ACC', 'BANCO_VES', 'BANCO_USD', 'CAJA_USD', 'GAN_CAMB', 'PERD_CAMB']);
     const getAcc = (code) => {
       const acc = accounts.find((a) => a.code === code);
-      if (!acc) throw new AppError(`Cuenta interna "${code}" no encontrada. Verifique que las migraciones se ejecutaron correctamente.`, 500);
+      if (!acc) throw new AppError(`Cuenta interna "${code}" no encontrada.`, 500);
       return acc;
     };
 
@@ -743,6 +764,9 @@ async function resetAndSeedDemo(userId) {
     await trx('treasury_cash_flows').del();
     await trx('treasury_ledger').del();
     await trx('treasury_operations').del();
+
+    // Ensure internal accounts exist (auto-seed if missing)
+    await ensureInternalAccounts();
 
     // Get internal accounts
     const accounts = await trx('internal_accounts')
