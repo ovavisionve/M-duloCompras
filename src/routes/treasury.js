@@ -70,14 +70,16 @@ router.get('/reports/operations/pdf', authenticate, authorize('admin', 'tesorero
 
     const headers = ['Fecha', 'Tipo', 'Proveedor', 'VES', 'Tasa BCV', 'Tasa Compra', 'USD Real', 'Dif. USD', 'Estado'];
     const colWidths = [65, 80, 170, 95, 70, 70, 80, 80, 60];
-    let x = 30;
+    const drawRow = (cells, y) => {
+      let cx = 30;
+      cells.forEach((val, i) => { doc.text(String(val), cx, y, { width: colWidths[i] }); cx += colWidths[i]; });
+    };
     doc.fontSize(7).font('Helvetica-Bold');
-    headers.forEach((h, i) => { doc.text(h, x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
-    doc.moveDown(0.5);
+    drawRow(headers, doc.y);
+    doc.moveDown(1.2);
     doc.font('Helvetica').fontSize(6);
 
     for (const op of result.data) {
-      x = 30;
       if (doc.y > 550) { doc.addPage(); }
       const row = [
         new Date(op.operation_date).toLocaleDateString('es-VE'),
@@ -90,8 +92,8 @@ router.get('/reports/operations/pdf', authenticate, authorize('admin', 'tesorero
         `${parseFloat(op.diff_usd || 0) >= 0 ? '+' : ''}${parseFloat(op.diff_usd || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
         op.status,
       ];
-      row.forEach((val, i) => { doc.text(String(val), x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
-      doc.moveDown(0.3);
+      drawRow(row, doc.y);
+      doc.moveDown(1);
     }
     doc.end();
   } catch (err) { next(err); }
@@ -158,7 +160,7 @@ router.get('/reports/cashflows/pdf', authenticate, authorize('admin', 'tesorero'
     const result = await treasuryService.listCashFlows({ ...req.query, limit: 500 });
     const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || 'Comprar-IA';
 
-    const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+    const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=posicion_cambiaria.pdf');
     doc.pipe(res);
@@ -169,16 +171,18 @@ router.get('/reports/cashflows/pdf', authenticate, authorize('admin', 'tesorero'
     doc.moveDown();
 
     const headers = ['Fecha', 'Tipo', 'VES', 'USD (entrada)', 'Tasa BCV', 'Origen', 'Descripción'];
-    const colWidths = [60, 55, 80, 75, 60, 60, 145];
-    let x = 40;
+    const colWidths = [70, 65, 100, 90, 70, 80, 215];
+    const drawCfRow = (cells, y) => {
+      let cx = 40;
+      cells.forEach((val, i) => { doc.text(String(val), cx, y, { width: colWidths[i] }); cx += colWidths[i]; });
+    };
     doc.fontSize(7).font('Helvetica-Bold');
-    headers.forEach((h, i) => { doc.text(h, x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
-    doc.moveDown(0.5);
+    drawCfRow(headers, doc.y);
+    doc.moveDown(1.2);
     doc.font('Helvetica').fontSize(6);
 
     for (const f of result.data) {
-      x = 40;
-      if (doc.y > 700) { doc.addPage(); }
+      if (doc.y > 550) { doc.addPage(); }
       const row = [
         new Date(f.flow_date).toLocaleDateString('es-VE'),
         f.flow_type === 'ingreso' ? 'INGRESO' : 'EGRESO',
@@ -188,8 +192,8 @@ router.get('/reports/cashflows/pdf', authenticate, authorize('admin', 'tesorero'
         f.reference_type === 'treasury_operation' ? 'Compra USD' : 'Manual',
         (f.description || '-').substring(0, 40),
       ];
-      row.forEach((val, i) => { doc.text(String(val), x, doc.y, { width: colWidths[i] }); x += colWidths[i]; });
-      doc.moveDown(0.3);
+      drawCfRow(row, doc.y);
+      doc.moveDown(1);
     }
     doc.end();
   } catch (err) { next(err); }

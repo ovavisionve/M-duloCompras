@@ -122,18 +122,27 @@ export default function Treasury() {
   }, [activeTab]);
 
   // ─── Download helpers ───
-  const downloadFile = (url, filename) => {
+  const downloadFile = (url, filename, queryFilters = {}) => {
     const token = localStorage.getItem('token');
-    fetch(`/api/v1${url}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
+    const params = new URLSearchParams();
+    Object.entries(queryFilters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const qs = params.toString();
+    const fullUrl = `/api/v1${url}${qs ? `?${qs}` : ''}`;
+    fetch(fullUrl, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Error ${r.status}: ${r.statusText}`);
+        return r.blob();
+      })
       .then((blob) => {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = filename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
       })
-      .catch(() => alert('Error al descargar'));
+      .catch((err) => alert(`Error al descargar: ${err.message}`));
   };
 
   // ─── Cash Position / Flows loaders ───
@@ -283,10 +292,10 @@ export default function Treasury() {
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {activeTab === 'divisas' && (
             <>
-              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/pdf', 'compra_divisas.pdf')} title="Descargar PDF">
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/pdf', 'compra_divisas.pdf', filters)} title="Descargar PDF">
                 <Download size={16} /> PDF
               </button>
-              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/excel', 'compra_divisas.xlsx')} title="Descargar Excel">
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/operations/excel', 'compra_divisas.xlsx', filters)} title="Descargar Excel">
                 <Download size={16} /> Excel
               </button>
               <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
@@ -296,10 +305,10 @@ export default function Treasury() {
           )}
           {activeTab === 'posicion' && (
             <>
-              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/pdf', 'posicion_cambiaria.pdf')} title="Descargar PDF">
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/pdf', 'posicion_cambiaria.pdf', cashFilters)} title="Descargar PDF">
                 <Download size={16} /> PDF
               </button>
-              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/excel', 'posicion_cambiaria.xlsx')} title="Descargar Excel">
+              <button className="btn" onClick={() => downloadFile('/treasury/reports/cashflows/excel', 'posicion_cambiaria.xlsx', cashFilters)} title="Descargar Excel">
                 <Download size={16} /> Excel
               </button>
               <button className="btn btn-primary" onClick={() => setShowCashForm(!showCashForm)}>
