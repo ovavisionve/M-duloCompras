@@ -37,8 +37,11 @@ exports.up = async function (knex) {
   // 9. Suppliers
   if (await knex.schema.hasTable('suppliers')) await knex('suppliers').del();
 
-  // 10. Exchange rates (seed had fake rates)
-  if (await knex.schema.hasTable('exchange_rates')) await knex('exchange_rates').del();
+  // 10. Exchange rates — only delete seed-generated fakes (source='manual' from seed)
+  // Keep API-fetched rates (source='bcv_api', 'bcv_scrape', 'pydolarve', etc.)
+  if (await knex.schema.hasTable('exchange_rates')) {
+    await knex('exchange_rates').where({ source: 'manual' }).del();
+  }
 
   // 11. Internal accounts (treasury)
   if (await knex.schema.hasTable('internal_accounts')) await knex('internal_accounts').del();
@@ -55,8 +58,9 @@ exports.up = async function (knex) {
 
   console.log('=== PRODUCTION RESET COMPLETE ===');
   console.log('Cleaned: suppliers, invoices, payments, withholdings, purchase_books,');
-  console.log('         treasury, bank_movements, exchange_rates, audit_logs, webhook_logs');
-  console.log('Kept: users, config, expense_categories, cost_centers, withholding_rules, bank_accounts (zeroed)');
+  console.log('         treasury, bank_movements, manual exchange_rates, audit_logs, webhook_logs');
+  console.log('Kept: users, config, expense_categories, cost_centers, withholding_rules,');
+  console.log('      bank_accounts (zeroed), exchange_rates from API (bcv_api, bcv_scrape, etc.)');
 };
 
 exports.down = async function () {

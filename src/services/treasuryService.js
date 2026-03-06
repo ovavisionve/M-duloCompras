@@ -1039,10 +1039,7 @@ module.exports = {
   voidCashFlow,
   getRevaluationReport,
   repairMissingCashFlows,
-  resetAndSeedDemo,
-  cleanAllData,
   detectOutflows,
-  seedTestBankData,
 };
 
 /**

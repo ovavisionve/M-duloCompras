@@ -680,24 +680,12 @@ export default function Treasury() {
         </>}
         {(!dashData || (dashData && dashData.kpis.operations_count === 0 && (!dashData.position || dashData.position.month_flow_count === 0))) && !dashLoading && (
           <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <div style={{ color: 'var(--gray-400)', marginBottom: '1rem' }}>
+            <div style={{ color: 'var(--gray-400)' }}>
               {!dashData ? 'No hay datos disponibles.' : 'No hay operaciones ni movimientos este mes.'}
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                if (!window.confirm('Esto cargará datos de prueba: 3 bancos, 11 movimientos bancarios, 6 ingresos de boletos, 2 compras de divisas y tasas BCV. ¿Continuar?')) return;
-                api.post('/treasury/seed-test-data')
-                  .then((r) => {
-                    alert(`Datos cargados: ${r.data.data.bank_accounts} bancos, ${r.data.data.bank_movements} movimientos, ${r.data.data.cash_flows} flujos, ${r.data.data.operations} operaciones`);
-                    loadDashboard();
-                    setDashData(null);
-                  })
-                  .catch((err) => alert(err.response?.data?.error?.message || 'Error al cargar datos'));
-              }}
-            >
-              Cargar Datos de Prueba (WEFLY2022)
-            </button>
+            <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+              Registre operaciones en "Compra de Divisas" o movimientos en "Posición Cambiaria" para ver el dashboard.
+            </div>
           </div>
         )}
       </>}

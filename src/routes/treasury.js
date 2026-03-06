@@ -295,30 +295,6 @@ router.post('/cash/repair', authenticate, authorize('admin', 'tesorero'), async 
   } catch (err) { next(err); }
 });
 
-// POST /treasury/reset-demo - Clean all treasury data and create 10 sample movements
-router.post('/reset-demo', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
-  try {
-    const data = await treasuryService.resetAndSeedDemo(req.user.id);
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-// POST /treasury/clean-data - Clean ALL treasury data (no seeding)
-router.post('/clean-data', authenticate, authorize('admin'), async (req, res, next) => {
-  try {
-    const data = await treasuryService.cleanAllData();
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-// POST /treasury/seed-test-data - Load realistic test data (bank movements + treasury)
-router.post('/seed-test-data', authenticate, authorize('admin'), async (req, res, next) => {
-  try {
-    const data = await treasuryService.seedTestBankData(req.user.id);
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
 // GET /treasury/detect-outflows - Detect recent bank outflows for classification
 router.get('/detect-outflows', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
