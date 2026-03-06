@@ -5,26 +5,26 @@
 const bcrypt = require('bcryptjs');
 
 exports.up = async function (knex) {
-  // ─── CLEAN ALL DEMO DATA ───
-  // Order matters due to foreign keys
-  await knex('cash_flows').del().catch(() => {});
-  await knex('treasury_operations').del().catch(() => {});
-  await knex('withholding_details').del().catch(() => {});
-  await knex('withholdings').del().catch(() => {});
-  await knex('payment_invoices').del().catch(() => {});
-  await knex('payments').del().catch(() => {});
-  await knex('invoice_items').del().catch(() => {});
-  await knex('invoices').del().catch(() => {});
-  await knex('suppliers').del().catch(() => {});
-  await knex('bank_transactions').del().catch(() => {});
-  await knex('bank_accounts').del();
-  await knex('exchange_rates').del();
-  await knex('withholding_rules').del();
-  await knex('expense_categories').del();
-  await knex('cost_centers').del();
-  await knex('config').del();
-  await knex('api_keys').del().catch(() => {});
-  await knex('users').del();
+  // ─── CLEAN ALL DATA using TRUNCATE CASCADE (PostgreSQL) ───
+  // This handles all foreign key dependencies automatically
+  const tables = [
+    'webhook_logs', 'webhook_subscriptions', 'audit_logs',
+    'purchase_books', 'bank_movements', 'payment_invoices', 'payments',
+    'withholding_invoices', 'withholdings', 'withholding_rules',
+    'invoice_items', 'invoices', 'suppliers',
+    'treasury_cash_flows', 'treasury_ledger', 'treasury_operations', 'internal_accounts',
+    'cash_flows',
+    'exchange_rates', 'bank_accounts',
+    'expense_categories', 'cost_centers', 'config',
+    'api_keys', 'users',
+  ];
+
+  for (const table of tables) {
+    const exists = await knex.schema.hasTable(table);
+    if (exists) {
+      await knex.raw(`TRUNCATE TABLE "${table}" CASCADE`);
+    }
+  }
 
   // ─── USERS ───
   const passwordHash = await bcrypt.hash('admin123', 12);
@@ -122,19 +122,6 @@ exports.up = async function (knex) {
     rates.push({ rate_date: dateStr, rate: parseFloat(rate.toFixed(6)), source: i === 0 ? 'manual' : 'bcv_api' });
   }
   await knex('exchange_rates').insert(rates);
-
-  // ─── PAYMENT METHODS ───
-  const pmTable = await knex.schema.hasTable('payment_methods');
-  if (pmTable) {
-    await knex('payment_methods').del();
-    await knex('payment_methods').insert([
-      { name: 'Pago Móvil', code: 'PM' },
-      { name: 'Zelle', code: 'ZEL' },
-      { name: 'Efectivo VES', code: 'EF-VES' },
-      { name: 'Efectivo USD', code: 'EF-USD' },
-      { name: 'Transferencia Bancaria', code: 'TRF' },
-    ]);
-  }
 
   console.log('WEFLY2022 C.A. data migration complete. All demo data replaced.');
   console.log('Login: admin@wefly.com.ve / admin123');

@@ -9,6 +9,12 @@ async function start() {
   // Run pending migrations before starting the server
   try {
     const knex = require('./database/connection');
+    // Clear any stale migration lock from a previous failed deploy
+    try {
+      await knex.migrate.forceFreeMigrationsLock();
+    } catch (lockErr) {
+      // Lock table may not exist yet on first run
+    }
     const [batch, migrations] = await knex.migrate.latest();
     if (migrations.length) {
       logger.info(`Ran ${migrations.length} migration(s) in batch ${batch}:`);
