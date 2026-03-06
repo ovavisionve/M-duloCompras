@@ -246,6 +246,31 @@ router.post('/manual', authenticate, authorize('admin', 'contador'), async (req,
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+/**
+ * @swagger
+ * /exchange-rates/binance:
+ *   get:
+ *     summary: Obtener tasa Binance P2P USDT/VES
+ *     description: Retorna la tasa actual del dólar Binance P2P (USDT/VES)
+ *     tags: [Tasas de Cambio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tasa Binance P2P del momento
+ *       502:
+ *         description: No se pudo obtener la tasa Binance
+ */
+router.get('/binance', authenticate, async (req, res, next) => {
+  try {
+    const result = await exchangeRateService.getTodayBinanceRate();
+    if (!result) return res.status(502).json({ success: false, error: { message: 'No se pudo obtener la tasa Binance P2P' } });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(502).json({ success: false, error: { message: err.message || 'No se pudo obtener la tasa Binance P2P' } });
+  }
+});
+
 router.post('/fetch', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const result = await exchangeRateService.fetchAndStoreBcvRate();

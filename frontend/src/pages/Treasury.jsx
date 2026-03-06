@@ -43,6 +43,9 @@ export default function Treasury() {
   const [outflowData, setOutflowData] = useState(null);
   const [outflowDismissed, setOutflowDismissed] = useState(false);
 
+  // ─── Binance rate state ───
+  const [binanceRate, setBinanceRate] = useState(null);
+
   // ─── Dashboard state ───
   const [dashData, setDashData] = useState(null);
   const [dashLoading, setDashLoading] = useState(false);
@@ -78,6 +81,18 @@ export default function Treasury() {
   // Load suppliers once
   useEffect(() => {
     api.get('/treasury/suppliers').then((r) => setSuppliers(r.data.data || [])).catch(() => {});
+  }, []);
+
+  // Fetch Binance P2P rate on mount (and every 30 min)
+  useEffect(() => {
+    const fetchBinance = () => {
+      api.get('/exchange-rates/binance').then((r) => {
+        if (r.data.data) setBinanceRate(r.data.data);
+      }).catch(() => {});
+    };
+    fetchBinance();
+    const interval = setInterval(fetchBinance, 30 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // Auto fetch BCV rate when form opens
@@ -138,7 +153,7 @@ export default function Treasury() {
 
   useEffect(() => {
     if (activeTab === 'posicion') { loadCashPosition(); loadCashFlows(); }
-    if (activeTab === 'divisas') { load(); }
+    if (activeTab === 'divisas') { load(); loadCashFlows(); }
   }, [activeTab, cashFilters, cashPagination.page]);
 
   // Auto fetch BCV for cash form (needed for ves and custom modes)
@@ -158,11 +173,11 @@ export default function Treasury() {
     if (mode === 'usd') {
       const usd = parseFloat(cashForm.amount_usd);
       if (!usd || usd <= 0) { setCashFormError('Ingrese monto USD válido'); return; }
-    } else if (mode === 'custom') {
+    } else if (mode === 'custom' || mode === 'binance') {
       const usd = parseFloat(cashForm.amount_usd);
       const cRate = parseFloat(cashForm.custom_rate);
       if (!usd || usd <= 0) { setCashFormError('Ingrese monto USD válido'); return; }
-      if (!cRate || cRate <= 0) { setCashFormError('Ingrese tasa personalizada válida'); return; }
+      if (!cRate || cRate <= 0) { setCashFormError(mode === 'binance' ? 'La tasa Binance no está disponible' : 'Ingrese tasa personalizada válida'); return; }
     } else {
       const ves = parseFloat(cashForm.amount_ves);
       const bcv = parseFloat(cashForm.bcv_rate);
@@ -172,7 +187,9 @@ export default function Treasury() {
 
     setCashSubmitting(true);
     try {
-      await api.post('/treasury/cash/flows', cashForm);
+      const payload = { ...cashForm };
+      if (payload.currency_mode === 'binance') payload.currency_mode = 'custom';
+      await api.post('/treasury/cash/flows', payload);
       setShowCashForm(false);
       setCashForm({ flow_date: new Date().toISOString().split('T')[0], flow_type: 'ingreso', currency_mode: 'usd', amount_usd: '', amount_ves: '', bcv_rate: '', custom_rate: '', description: '' });
       loadCashPosition(); loadCashFlows(); loadOutflows();
@@ -442,10 +459,21 @@ export default function Treasury() {
           </div>
 
           {/* Rate cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
             <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Tasa BCV Hoy</div>
               <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--primary)' }}>{fmtRate(dashData.kpis.today_bcv_rate)}</div>
+            </div>
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center', border: binanceRate ? '2px solid #f59e0b' : undefined }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 600 }}>Tasa Binance P2P</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: '#f59e0b' }}>
+                {binanceRate ? fmtRate(binanceRate.rate) : '—'}
+              </div>
+              {binanceRate && dashData.kpis.today_bcv_rate > 0 && (
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>
+                  +{fmtNum(((binanceRate.rate / dashData.kpis.today_bcv_rate - 1) * 100))}% vs BCV
+                </div>
+              )}
             </div>
             <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Tasa Prom. Compra</div>
@@ -601,7 +629,15 @@ export default function Treasury() {
                 <input type="number" step="0.000001" value={form.bcv_rate} onChange={(e) => setForm({ ...form, bcv_rate: e.target.value })} required style={{ background: '#f0f9ff' }} />
               </div>
               <div className="form-group">
-                <label>Tasa de Compra ({purchaseTypes[form.purchase_type] || 'Paralela'}) *</label>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Tasa de Compra ({purchaseTypes[form.purchase_type] || 'Paralela'}) *</span>
+                  {binanceRate && (
+                    <button type="button" style={{ fontSize: '0.68rem', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '1px 6px', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}
+                      onClick={() => setForm({ ...form, purchase_rate: String(binanceRate.rate) })}>
+                      Usar Binance ({fmtRate(binanceRate.rate)})
+                    </button>
+                  )}
+                </label>
                 <input type="number" step="0.000001" value={form.purchase_rate} onChange={(e) => setForm({ ...form, purchase_rate: e.target.value })} required placeholder="Tasa real a la que compras" style={{ border: '2px solid var(--warning)' }} />
               </div>
             </div>
@@ -778,10 +814,125 @@ export default function Treasury() {
         </div>
       )}
 
+      {/* ── Recent Cash Flow Movements (from Posición Cambiaria) ── */}
+      {cashFlows.length > 0 && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Wallet size={16} /> Movimientos Recientes (Posición Cambiaria)
+            </h3>
+            <button className="btn btn-sm" onClick={() => setActiveTab('posicion')} style={{ fontSize: '0.75rem' }}>
+              Ver todos
+            </button>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>VES</th>
+                  <th>USD Equiv.</th>
+                  <th>Tasa</th>
+                  <th>Origen</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashFlows.slice(0, 10).map((f) => (
+                  <tr key={f.id} style={f.status === 'anulado' ? { opacity: 0.5 } : {}}>
+                    <td>{fmtDate(f.flow_date)}</td>
+                    <td>
+                      <span className={`badge ${f.flow_type === 'ingreso' ? 'badge-green' : 'badge-red'}`}>
+                        {f.flow_type === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                      </span>
+                    </td>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 600, color: f.flow_type === 'ingreso' ? 'var(--success)' : 'var(--danger)' }}>
+                      {f.flow_type === 'ingreso' ? '+' : '-'}{fmtNum(f.amount_ves)}
+                    </td>
+                    <td style={{ fontFamily: 'monospace', color: 'var(--gray-600)' }}>{fmtNum(f.usd_equivalent)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtRate(f.bcv_rate)}</td>
+                    <td style={{ fontSize: '0.78rem' }}>
+                      {f.reference_type === 'treasury_operation' ? <span className="badge badge-gray">Compra USD</span> : <span className="badge badge-gray">Manual</span>}
+                    </td>
+                    <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.description || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       </>}
 
       {/* ══════════ TAB: POSICIÓN CAMBIARIA ══════════ */}
       {activeTab === 'posicion' && <>
+
+        {/* ── Rates summary bar ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+          {cashPosition && (
+            <>
+              <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Saldo VES</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: cashPosition.balance_ves >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(cashPosition.balance_ves)}</div>
+              </div>
+              <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Equiv. USD (BCV)</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>{fmtNum(cashPosition.balance_usd_today)}</div>
+              </div>
+              <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>USD al Ingresar</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: 'var(--gray-600)' }}>{fmtNum(cashPosition.balance_usd_at_entry)}</div>
+              </div>
+              <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Revaluación</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: cashPosition.revaluation_usd >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {cashPosition.revaluation_usd >= 0 ? '+' : ''}{fmtNum(cashPosition.revaluation_usd)} USD
+                </div>
+              </div>
+            </>
+          )}
+          {binanceRate && (
+            <div className="card" style={{ padding: '0.75rem', textAlign: 'center', border: '2px solid #f59e0b' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 600 }}>Tasa Binance P2P</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 700, color: '#f59e0b' }}>{fmtRate(binanceRate.rate)}</div>
+              {cashPosition && binanceRate.rate > 0 && (
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>
+                  Equiv: {fmtNum(cashPosition.balance_ves / binanceRate.rate)} USD
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Dual Currency Summary ── */}
+        {cashPosition && cashPosition.movements_count > 0 && (
+          <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
+            <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', color: 'var(--gray-500)', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>Resumen Contable Dual (VES / USD)</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)', textTransform: 'uppercase' }}>Ingresos</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--success)' }}>{fmtNum(cashPosition.total_ingresos_ves)} VES</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--gray-500)' }}>{fmtNum(cashPosition.total_ingresos_usd_entry)} USD</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)', textTransform: 'uppercase' }}>Egresos</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--danger)' }}>{fmtNum(cashPosition.total_egresos_ves)} VES</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--gray-500)' }}>{fmtNum(cashPosition.total_egresos_usd_entry)} USD</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray-400)', textTransform: 'uppercase' }}>Resultado Neto</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 700, color: cashPosition.balance_ves >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(cashPosition.balance_ves)} VES</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600, color: cashPosition.balance_usd_at_entry >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(cashPosition.balance_usd_at_entry)} USD (histórico)</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600, color: cashPosition.balance_usd_today >= 0 ? 'var(--primary)' : 'var(--danger)' }}>{fmtNum(cashPosition.balance_usd_today)} USD (hoy BCV)</div>
+                {binanceRate && cashPosition.balance_ves > 0 && (
+                  <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600, color: '#f59e0b' }}>{fmtNum(cashPosition.balance_ves / binanceRate.rate)} USD (Binance)</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Cash Flow Form ── */}
         {showCashForm && (
@@ -803,17 +954,23 @@ export default function Treasury() {
                 </div>
                 <div className="form-group">
                   <label>Moneda *</label>
-                  <select value={cashForm.currency_mode} onChange={(e) => setCashForm({ ...cashForm, currency_mode: e.target.value })}>
+                  <select value={cashForm.currency_mode} onChange={(e) => {
+                    const mode = e.target.value;
+                    const update = { ...cashForm, currency_mode: mode };
+                    if (mode === 'binance' && binanceRate) update.custom_rate = String(binanceRate.rate);
+                    setCashForm(update);
+                  }}>
                     <option value="usd">Dólares (USD) - sin tasa</option>
                     <option value="ves">Bolívares (VES) - tasa BCV referencia</option>
+                    <option value="binance">Dólares (USD) - tasa Binance P2P</option>
                     <option value="custom">Dólares (USD) - tasa personalizada</option>
                   </select>
                 </div>
               </div>
 
               <div className="form-row">
-                {/* USD input (for usd and custom modes) */}
-                {(cashForm.currency_mode === 'usd' || cashForm.currency_mode === 'custom') && (
+                {/* USD input (for usd, custom, and binance modes) */}
+                {(cashForm.currency_mode === 'usd' || cashForm.currency_mode === 'custom' || cashForm.currency_mode === 'binance') && (
                   <div className="form-group">
                     <label><DollarSign size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Monto USD *</label>
                     <input type="number" step="0.01" value={cashForm.amount_usd} onChange={(e) => setCashForm({ ...cashForm, amount_usd: e.target.value })} required placeholder="Ej: 100" style={{ border: '2px solid var(--success)' }} />
@@ -828,8 +985,8 @@ export default function Treasury() {
                   </div>
                 )}
 
-                {/* BCV rate (for ves mode and as reference for custom/usd) */}
-                {(cashForm.currency_mode === 'ves' || cashForm.currency_mode === 'custom') && (
+                {/* BCV rate (for ves mode and as reference for custom/usd/binance) */}
+                {(cashForm.currency_mode === 'ves' || cashForm.currency_mode === 'custom' || cashForm.currency_mode === 'binance') && (
                   <div className="form-group">
                     <label>Tasa BCV {cashForm.currency_mode === 'custom' ? '(referencia)' : '*'}</label>
                     <input type="number" step="0.000001" value={cashForm.bcv_rate} onChange={(e) => setCashForm({ ...cashForm, bcv_rate: e.target.value })} required={cashForm.currency_mode === 'ves'} style={{ background: '#f0f9ff' }} />
@@ -839,8 +996,27 @@ export default function Treasury() {
                 {/* Custom rate (for custom mode) */}
                 {cashForm.currency_mode === 'custom' && (
                   <div className="form-group">
-                    <label>Tasa Personalizada * <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>(USD x Tasa = VES)</span></label>
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Tasa Personalizada * <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>(USD x Tasa = VES)</span></span>
+                      {binanceRate && (
+                        <button type="button" style={{ fontSize: '0.68rem', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '1px 6px', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}
+                          onClick={() => setCashForm({ ...cashForm, custom_rate: String(binanceRate.rate) })}>
+                          Usar Binance ({fmtRate(binanceRate.rate)})
+                        </button>
+                      )}
+                    </label>
                     <input type="number" step="0.000001" value={cashForm.custom_rate} onChange={(e) => setCashForm({ ...cashForm, custom_rate: e.target.value })} required placeholder="Ej: 55.00" style={{ border: '2px solid var(--warning)' }} />
+                  </div>
+                )}
+                {cashForm.currency_mode === 'binance' && (
+                  <div className="form-group">
+                    <label>Tasa Binance P2P <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>(auto)</span></label>
+                    <input type="number" step="0.000001" value={cashForm.custom_rate} readOnly style={{ background: '#fffbeb', border: '2px solid #f59e0b', fontWeight: 600 }} />
+                    {binanceRate && parseFloat(cashForm.bcv_rate) > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: '#92400e', marginTop: '2px' }}>
+                        +{fmtNum(((binanceRate.rate / parseFloat(cashForm.bcv_rate) - 1) * 100))}% sobre BCV
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -854,7 +1030,7 @@ export default function Treasury() {
                   const bcv = parseFloat(cashForm.bcv_rate) || 0;
                   previewVes = bcv > 0 ? previewUsd * bcv : 0;
                   showPreview = true;
-                } else if (mode === 'custom' && parseFloat(cashForm.amount_usd) > 0 && parseFloat(cashForm.custom_rate) > 0) {
+                } else if ((mode === 'custom' || mode === 'binance') && parseFloat(cashForm.amount_usd) > 0 && parseFloat(cashForm.custom_rate) > 0) {
                   previewUsd = parseFloat(cashForm.amount_usd);
                   previewVes = previewUsd * parseFloat(cashForm.custom_rate);
                   showPreview = true;
@@ -877,6 +1053,7 @@ export default function Treasury() {
                       <div style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>
                         {mode === 'usd' && 'Operación directa en dólares, no requiere conversión de tasa.'}
                         {mode === 'custom' && `Tasa personalizada: ${fmtRate(parseFloat(cashForm.custom_rate))}`}
+                        {mode === 'binance' && `Tasa Binance P2P: ${fmtRate(parseFloat(cashForm.custom_rate))}`}
                         {mode === 'ves' && `Tasa BCV: ${fmtRate(parseFloat(cashForm.bcv_rate))}`}
                       </div>
                     </div>

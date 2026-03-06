@@ -154,6 +154,96 @@ async function getTodayRate() {
 }
 
 /**
+ * Fetch Binance P2P USDT/VES rate (median of top sell ads)
+ */
+async function fetchBinanceP2PRate() {
+  // Source 1: Binance P2P search API (undocumented but widely used)
+  try {
+    const response = await axios.post(
+      'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+      {
+        page: 1,
+        rows: 20,
+        payTypes: [],
+        asset: 'USDT',
+        tradeType: 'SELL',
+        fiat: 'VES',
+        publisherType: null,
+        merchantCheck: false,
+      },
+      {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      }
+    );
+
+    const ads = response.data?.data;
+    if (Array.isArray(ads) && ads.length > 0) {
+      const prices = ads.map(ad => parseFloat(ad.adv?.price)).filter(p => !isNaN(p) && p > 0);
+      if (prices.length > 0) {
+        prices.sort((a, b) => a - b);
+        const median = prices[Math.floor(prices.length / 2)];
+        logger.info(`Binance P2P rate (median of ${prices.length} ads): ${median}`);
+        return median;
+      }
+    }
+    throw new Error('No ads found in Binance P2P response');
+  } catch (err) {
+    logger.warn(`Binance P2P direct fetch failed: ${err.message}`);
+  }
+
+  // Source 2: pydolarve API with binance monitor
+  const fallbackUrls = [
+    'https://pydolarve.org/api/v1/dollar?monitor=binance',
+    'https://pydolarve.org/api/v1/dollar?monitor=criptodolar',
+  ];
+
+  for (const url of fallbackUrls) {
+    try {
+      const response = await axios.get(url, { timeout: 10000 });
+      const data = response.data;
+      if (data?.price) return parseFloat(data.price);
+      if (data?.promedio) return parseFloat(data.promedio);
+      if (Array.isArray(data) && data[0]?.price) return parseFloat(data[0].price);
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error('No se pudo obtener la tasa Binance P2P de ninguna fuente');
+}
+
+/**
+ * Get today's Binance P2P rate (with caching)
+ */
+async function getTodayBinanceRate() {
+  const today = new Date().toISOString().split('T')[0];
+  const cacheKey = `binance_rate_${today}`;
+
+  // Check in-memory cache (valid for 30 min)
+  if (binanceRateCache[cacheKey] && (Date.now() - binanceRateCache[cacheKey].ts) < 30 * 60 * 1000) {
+    return binanceRateCache[cacheKey].data;
+  }
+
+  try {
+    const rate = await fetchBinanceP2PRate();
+    const result = { rate_date: today, rate, source: 'binance_p2p' };
+    binanceRateCache[cacheKey] = { data: result, ts: Date.now() };
+    return result;
+  } catch (err) {
+    logger.error(`Failed to fetch Binance rate: ${err.message}`);
+    // Return cached value even if expired
+    if (binanceRateCache[cacheKey]) return binanceRateCache[cacheKey].data;
+    return null;
+  }
+}
+
+const binanceRateCache = {};
+
+/**
  * Store a manual rate
  */
 async function storeManualRate(date, rateValue, userId) {
@@ -185,4 +275,4 @@ async function getRateRange(from, to) {
     .orderBy('rate_date', 'asc');
 }
 
-module.exports = { fetchAndStoreBcvRate, getRateForDate, getTodayRate, storeManualRate, getRateRange };
+module.exports = { fetchAndStoreBcvRate, getRateForDate, getTodayRate, storeManualRate, getRateRange, fetchBinanceP2PRate, getTodayBinanceRate };
