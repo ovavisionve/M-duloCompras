@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 
 exports.seed = async function (knex) {
   // Skip if data already exists (idempotent for production)
-  const existingUsers = await knex('users').where({ email: 'admin@empresa.com' }).first();
+  const existingUsers = await knex('users').where({ email: 'admin@wefly.com.ve' }).first();
   if (existingUsers) {
     console.log('Seed data already exists, skipping...');
     return;
@@ -11,57 +11,65 @@ exports.seed = async function (knex) {
   // ─── USERS ───
   const passwordHash = await bcrypt.hash('admin123', 12);
   const [adminUser] = await knex('users').insert([
-    { email: 'admin@empresa.com', password_hash: passwordHash, full_name: 'Administrador', role: 'admin' },
+    { email: 'admin@wefly.com.ve', password_hash: passwordHash, full_name: 'Administrador WEFLY', role: 'admin' },
   ]).returning('*');
   await knex('users').insert([
-    { email: 'contador@empresa.com', password_hash: passwordHash, full_name: 'Contador Principal', role: 'contador' },
-    { email: 'tesorero@empresa.com', password_hash: passwordHash, full_name: 'Tesorero', role: 'tesorero' },
-    { email: 'operador@empresa.com', password_hash: passwordHash, full_name: 'Operador de Compras', role: 'operador' },
+    { email: 'contador@wefly.com.ve', password_hash: passwordHash, full_name: 'Contador WEFLY', role: 'contador' },
+    { email: 'tesorero@wefly.com.ve', password_hash: passwordHash, full_name: 'Tesorero WEFLY', role: 'tesorero' },
+    { email: 'operador@wefly.com.ve', password_hash: passwordHash, full_name: 'Operador WEFLY', role: 'operador' },
   ]);
 
-  // ─── COMPANY CONFIG ───
+  // ─── COMPANY CONFIG: WEFLY2022 C.A. ───
   await knex('config').insert([
-    { key: 'company_rif', value: 'J-12345678-9', description: 'RIF de la empresa' },
-    { key: 'company_name', value: 'Mi Empresa de Viajes C.A.', description: 'Razón social' },
-    { key: 'company_address', value: 'Caracas, Venezuela', description: 'Dirección fiscal' },
+    { key: 'company_rif', value: 'J-503159952', description: 'RIF de la empresa' },
+    { key: 'company_name', value: 'WEFLY2022 C.A.', description: 'Razón social' },
+    { key: 'company_address', value: 'Av La Estancia con calle Ernesto Blohm edif torre D piso 1 of D-102 Urb Chuao Caracas (Chacao) Miranda zona postal 1060', description: 'Dirección fiscal' },
     { key: 'tax_unit_value', value: '9.00', description: 'Valor Unidad Tributaria (Bs.)' },
-    { key: 'is_special_taxpayer', value: 'false', description: 'Es contribuyente especial' },
-    { key: 'default_vat_rate', value: '16', description: 'Alícuota IVA por defecto (%)' },
+    { key: 'is_special_taxpayer', value: 'false', description: 'Es contribuyente especial (NO)' },
+    { key: 'is_retention_agent_iva', value: 'false', description: 'Es agente de retención de IVA (NO)' },
+    { key: 'default_vat_rate', value: '16', description: 'Alícuota IVA del fee (16%)' },
+    { key: 'ticket_vat_rate', value: '8', description: 'Alícuota IVA del boleto KIU (8%)' },
     { key: 'igtf_rate', value: '3', description: 'Tasa IGTF (%)' },
     { key: 'withholding_counter_islr', value: '0', description: 'Contador correlativo retenciones ISLR' },
     { key: 'withholding_counter_iva', value: '0', description: 'Contador correlativo retenciones IVA' },
   ]);
 
   // ─── EXPENSE CATEGORIES ───
-  const [catGDS, catBoletos, catSerTec, catAlquiler, catPapeleria] = await knex('expense_categories').insert([
-    { name: 'Comisiones GDS', code: 'COM-GDS' },
-    { name: 'Boletos Aéreos', code: 'BOL-AER' },
-    { name: 'Servicios Tecnológicos', code: 'SER-TEC' },
-    { name: 'Alquiler', code: 'ALQ' },
-    { name: 'Papelería', code: 'PAP' },
-    { name: 'Servicios Profesionales', code: 'SER-PRO' },
-    { name: 'Publicidad y Marketing', code: 'PUB-MKT' },
-    { name: 'Hosting y Dominios', code: 'HOS-DOM' },
-    { name: 'Servicios Básicos', code: 'SER-BAS' },
-    { name: 'Transporte y Fletes', code: 'TRA-FLE' },
-    { name: 'Otros Gastos', code: 'OTR' },
+  // Categorías existentes del sistema + nuevas del cliente
+  const categories = await knex('expense_categories').insert([
+    { name: 'Comisiones GDS', code: 'COM-GDS', description: 'Comisiones KIU y sistemas GDS' },
+    { name: 'Boletos Aéreos', code: 'BOL-AER', description: 'Compra de boletos aéreos' },
+    { name: 'Servicios Tecnológicos', code: 'SER-TEC', description: 'Software, hosting, desarrollo' },
+    { name: 'Alquiler', code: 'ALQ', description: 'Alquiler de oficina' },
+    { name: 'Papelería', code: 'PAP', description: 'Papelería y suministros de oficina' },
+    { name: 'Servicios Profesionales', code: 'SER-PRO', description: 'Consultorías, asesorías legales/contables' },
+    { name: 'Publicidad y Marketing', code: 'PUB-MKT', description: 'Publicidad y propaganda' },
+    { name: 'Hosting y Dominios', code: 'HOS-DOM', description: 'Hosting web y dominios' },
+    { name: 'Servicios Básicos', code: 'SER-BAS', description: 'Electricidad, agua, etc.' },
+    { name: 'Transporte y Fletes', code: 'TRA-FLE', description: 'Fletes y transporte' },
+    { name: 'Otros Gastos', code: 'OTR', description: 'Gastos no clasificados' },
+    // Categorías específicas de WEFLY
+    { name: 'Servidores (Amazon AWS)', code: 'SRV-AWS', description: 'Servidores cloud Amazon' },
+    { name: 'Google Workspace', code: 'GOO-WS', description: 'Google emails y workspace' },
+    { name: 'Nómina', code: 'NOM', description: 'Sueldos y salarios' },
+    { name: 'Telefonía (Digitel)', code: 'TEL-DIG', description: 'Línea telefónica Digitel' },
+    { name: 'Internet (NetUno)', code: 'INT-NET', description: 'Servicio WiFi NetUno' },
+    { name: 'Oficina', code: 'OFI', description: 'Gastos generales de oficina' },
+    { name: 'Estacionamiento', code: 'EST', description: 'Tarjetas de estacionamiento' },
+    { name: 'Licencias GDS', code: 'LIC-GDS', description: 'Licencias KIU, Duffel' },
   ]).returning('*');
 
   // ─── COST CENTERS ───
-  const [ccOpe, ccAdm, ccVen, ccTec] = await knex('cost_centers').insert([
-    { name: 'Operaciones', code: 'OPE' },
-    { name: 'Administración', code: 'ADM' },
-    { name: 'Ventas', code: 'VEN' },
-    { name: 'Tecnología', code: 'TEC' },
+  const costCenters = await knex('cost_centers').insert([
+    { name: 'Operaciones', code: 'OPE', description: 'Operaciones de vuelo y reservas' },
+    { name: 'Administración', code: 'ADM', description: 'Administración general' },
+    { name: 'Ventas', code: 'VEN', description: 'Ventas y comercialización' },
+    { name: 'Tecnología', code: 'TEC', description: 'Departamento de tecnología' },
   ]).returning('*');
 
   // ─── WITHHOLDING RULES (Decreto 1808, Art. 9 — Códigos oficiales SENIAT) ───
-  // Fuente: Manual técnico SENIAT N° 60.40.40.039, Versión 2.3, enero 2017
-  // Códigos: https://github.com/ks7000/seniat-islr/blob/master/seniat_codigo_concepto_retencion_islr.xml
   await knex('withholding_rules').insert([
     // ── ISLR - Persona Natural Residente (PNR) ──
-    // Sustraendo 83.3334 UT (Parágrafo 8°, Art. 9, Decreto 1808)
-    // Mínimo sujeto a retención: 25 UT (excepto numerales 9, 11, 14, 20)
     { type: 'ISLR', concept_code: '002', concept_name: 'Honorarios profesionales no mercantiles (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
     { type: 'ISLR', concept_code: '012', concept_name: 'Honorarios profesionales pagados por clínicas, hospitales y similares (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
     { type: 'ISLR', concept_code: '018', concept_name: 'Comisiones distintas a remuneraciones salariales (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
@@ -73,7 +81,6 @@ exports.seed = async function (knex) {
     { type: 'ISLR', concept_code: '083', concept_name: 'Publicidad y propaganda (PNR)', rate: 3.00, subtract_ut: 83.3334, applies_to: 'natural' },
 
     // ── ISLR - Persona Jurídica Domiciliada (PJD) ──
-    // Sin sustraendo, pago mínimo sujeto: 25 UT (excepto numerales 9, 11, 14, 20)
     { type: 'ISLR', concept_code: '004', concept_name: 'Honorarios profesionales no mercantiles (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
     { type: 'ISLR', concept_code: '020', concept_name: 'Comisiones distintas a remuneraciones salariales (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
     { type: 'ISLR', concept_code: '027', concept_name: 'Intereses pagados por PJ o comunidades (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
@@ -84,320 +91,35 @@ exports.seed = async function (knex) {
     { type: 'ISLR', concept_code: '084', concept_name: 'Publicidad y propaganda (PJD)', rate: 5.00, subtract_ut: 0, applies_to: 'juridica' },
 
     // ── IVA (Providencia SNAT/2025/000054, Art. 16) ──
+    // WEFLY no es agente de retención de IVA aún, pero se dejan configuradas las reglas
     { type: 'IVA', concept_code: 'IVA-75', concept_name: 'Retención IVA 75% (contribuyente ordinario)', rate: 75.00, applies_to: 'ambos' },
     { type: 'IVA', concept_code: 'IVA-100', concept_name: 'Retención IVA 100% (sin RIF / factura incumple requisitos)', rate: 100.00, applies_to: 'ambos' },
   ]);
 
-  // ─── BANK ACCOUNTS ───
-  const [bankBanesco, bankProvincial] = await knex('bank_accounts').insert([
-    { bank_name: 'Banesco', account_type: 'corriente', account_number: '01340000000000000001', currency: 'VES', initial_balance: 5000000, current_balance: 5000000 },
-    { bank_name: 'Provincial', account_type: 'corriente', account_number: '01080000000000000001', currency: 'VES', initial_balance: 3000000, current_balance: 3000000 },
-  ]).returning('*');
+  // ─── BANK ACCOUNTS: BFC (VES), Chase (USD), PNC (USD) ───
+  await knex('bank_accounts').insert([
+    { bank_name: 'BFC Banco Fondo Común', account_type: 'corriente', account_number: '01510000000000000001', currency: 'VES', initial_balance: 0, current_balance: 0 },
+    { bank_name: 'Chase Bank', account_type: 'corriente', account_number: 'CHASE-USD-001', currency: 'USD', initial_balance: 0, current_balance: 0 },
+    { bank_name: 'PNC Bank', account_type: 'corriente', account_number: 'PNC-USD-001', currency: 'USD', initial_balance: 0, current_balance: 0 },
+  ]);
 
-  // ─── EXCHANGE RATES (last 7 days) ───
+  // ─── EXCHANGE RATES (last 7 days - realistic BCV) ───
   const today = new Date();
   const rates = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split('T')[0];
-    // Realistic BCV rate ~419-421 Bs/$
     const rate = 419.00 + (Math.random() * 2.5).toFixed(2) * 1;
     rates.push({ rate_date: dateStr, rate: parseFloat(rate.toFixed(6)), source: i === 0 ? 'manual' : 'bcv_api' });
   }
   await knex('exchange_rates').insert(rates);
 
-  // Get today's rate for invoice calculations
-  const todayRate = rates[rates.length - 1].rate;
-  const todayStr = today.toISOString().split('T')[0];
+  // ─── NO SAMPLE INVOICES, PAYMENTS, SUPPLIERS ───
+  // Client will configure their own data manually
+  // Suppliers, invoices, and payments are left empty for fresh start
 
-  // ─── SUPPLIERS ───
-  const [supAmadeus, supSabre, supInmobiliaria, supPapelera, supTecno] = await knex('suppliers').insert([
-    {
-      rif: 'J-40100000-1',
-      business_name: 'Amadeus IT Group Venezuela C.A.',
-      fiscal_address: 'Torre Amadeus, Av. Francisco de Miranda, Caracas',
-      phone: '0212-5551234',
-      email: 'facturacion@amadeus.com.ve',
-      taxpayer_type: 'ordinario',
-    },
-    {
-      rif: 'J-30200000-2',
-      business_name: 'Sabre Travel Network de Venezuela C.A.',
-      fiscal_address: 'Centro Empresarial Sabana Grande, Caracas',
-      phone: '0212-5555678',
-      email: 'ap@sabre.com.ve',
-      taxpayer_type: 'ordinario',
-    },
-    {
-      rif: 'J-29800000-3',
-      business_name: 'Inmobiliaria Centro Plaza C.A.',
-      fiscal_address: 'Av. Principal de Los Ruices, Caracas',
-      phone: '0212-5559012',
-      email: 'cobranzas@centroplaza.com.ve',
-      taxpayer_type: 'especial',
-      is_retention_agent: true,
-    },
-    {
-      rif: 'J-00100000-4',
-      business_name: 'Distribuidora de Papelería Nacional C.A.',
-      fiscal_address: 'Zona Industrial La Yaguara, Caracas',
-      phone: '0212-5553456',
-      email: 'ventas@papelera.com.ve',
-      taxpayer_type: 'ordinario',
-    },
-    {
-      rif: 'V-18500000-5',
-      business_name: 'Carlos Rodríguez (Consultor IT)',
-      fiscal_address: 'Res. Los Pinos, Baruta, Miranda',
-      phone: '0414-5557890',
-      email: 'carlos.it@gmail.com',
-      taxpayer_type: 'ordinario',
-    },
-  ]).returning('*');
-
-  // ─── INVOICES ───
-  // Helper to compute fiscal period
-  const fiscalPeriod = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-
-  // Invoice 1: Amadeus - Comisiones GDS (VES)
-  const inv1Taxable = 150000.00;
-  const inv1Vat = inv1Taxable * 0.16;
-  const inv1Total = inv1Taxable + inv1Vat;
-  const [invoice1] = await knex('invoices').insert({
-    supplier_id: supAmadeus.id,
-    document_type: 'FC',
-    invoice_number: 'FAC-2026-0001',
-    control_number: '00-0001001',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'VES',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Comisiones GDS Amadeus - Enero 2026',
-    expense_category_id: catGDS.id,
-    cost_center_id: ccOpe.id,
-    taxable_amount: inv1Taxable,
-    exempt_amount: 0,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv1Vat,
-    total_amount: inv1Total,
-    total_ves: inv1Total,
-    total_usd: parseFloat((inv1Total / todayRate).toFixed(2)),
-    status: 'registrada',
-  }).returning('*');
-
-  // Items for invoice 1
-  await knex('invoice_items').insert([
-    { invoice_id: invoice1.id, description: 'Comisión segmentos aéreos', quantity: 500, unit_price: 200, subtotal: 100000, is_taxable: true },
-    { invoice_id: invoice1.id, description: 'Comisión segmentos hotel', quantity: 100, unit_price: 500, subtotal: 50000, is_taxable: true },
-  ]);
-
-  // Invoice 2: Sabre - Licencia USD
-  const inv2Taxable = 2500.00;
-  const inv2Vat = inv2Taxable * 0.16;
-  const inv2Total = inv2Taxable + inv2Vat;
-  const inv2Igtf = parseFloat((inv2Total * 0.03).toFixed(2));
-  const [invoice2] = await knex('invoices').insert({
-    supplier_id: supSabre.id,
-    document_type: 'FC',
-    invoice_number: 'INV-2026-0045',
-    control_number: '00-0002045',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'USD',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Licencia Sabre Red Workspace - Feb 2026',
-    expense_category_id: catSerTec.id,
-    cost_center_id: ccTec.id,
-    taxable_amount: inv2Taxable,
-    exempt_amount: 0,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv2Vat,
-    total_amount: inv2Total + inv2Igtf,
-    total_ves: parseFloat(((inv2Total + inv2Igtf) * todayRate).toFixed(2)),
-    total_usd: inv2Total + inv2Igtf,
-    igtf_amount: inv2Igtf,
-    status: 'registrada',
-  }).returning('*');
-
-  await knex('invoice_items').insert([
-    { invoice_id: invoice2.id, description: 'Licencia Sabre Red Workspace (5 puestos)', quantity: 5, unit_price: 500, subtotal: 2500, is_taxable: true },
-  ]);
-
-  // Invoice 3: Inmobiliaria - Alquiler (partially exempt)
-  const inv3Taxable = 800000.00;
-  const inv3Exempt = 200000.00;
-  const inv3Vat = inv3Taxable * 0.16;
-  const inv3Total = inv3Taxable + inv3Exempt + inv3Vat;
-  const [invoice3] = await knex('invoices').insert({
-    supplier_id: supInmobiliaria.id,
-    document_type: 'FC',
-    invoice_number: 'A-0000123',
-    control_number: '00-0003123',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'VES',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Alquiler oficina principal - Feb 2026',
-    expense_category_id: catAlquiler.id,
-    cost_center_id: ccAdm.id,
-    taxable_amount: inv3Taxable,
-    exempt_amount: inv3Exempt,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv3Vat,
-    total_amount: inv3Total,
-    total_ves: inv3Total,
-    total_usd: parseFloat((inv3Total / todayRate).toFixed(2)),
-    status: 'registrada',
-  }).returning('*');
-
-  // Invoice 4: Papelera - Suministros (small, for quick pay test)
-  const inv4Taxable = 5000.00;
-  const inv4Vat = inv4Taxable * 0.16;
-  const inv4Total = inv4Taxable + inv4Vat;
-  const [invoice4] = await knex('invoices').insert({
-    supplier_id: supPapelera.id,
-    document_type: 'FC',
-    invoice_number: 'B-0005678',
-    control_number: '00-0045678',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'VES',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Resmas de papel y tóner',
-    expense_category_id: catPapeleria.id,
-    cost_center_id: ccAdm.id,
-    taxable_amount: inv4Taxable,
-    exempt_amount: 0,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv4Vat,
-    total_amount: inv4Total,
-    total_ves: inv4Total,
-    total_usd: parseFloat((inv4Total / todayRate).toFixed(2)),
-    status: 'registrada',
-  }).returning('*');
-
-  // Invoice 5: Consultor IT - Servicios profesionales (for ISLR withholding test)
-  const inv5Taxable = 45000.00;
-  const inv5Vat = inv5Taxable * 0.16;
-  const inv5Total = inv5Taxable + inv5Vat;
-  const [invoice5] = await knex('invoices').insert({
-    supplier_id: supTecno.id,
-    document_type: 'FC',
-    invoice_number: 'CR-2026-008',
-    control_number: '00-0008008',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'VES',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Consultoría desarrollo sistema interno - Feb 2026',
-    expense_category_id: catSerTec.id,
-    cost_center_id: ccTec.id,
-    taxable_amount: inv5Taxable,
-    exempt_amount: 0,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv5Vat,
-    total_amount: inv5Total,
-    total_ves: inv5Total,
-    total_usd: parseFloat((inv5Total / todayRate).toFixed(2)),
-    status: 'registrada',
-  }).returning('*');
-
-  // Invoice 6: Amadeus - Nota de Crédito
-  const inv6Taxable = 10000.00;
-  const inv6Vat = inv6Taxable * 0.16;
-  const inv6Total = inv6Taxable + inv6Vat;
-  await knex('invoices').insert({
-    supplier_id: supAmadeus.id,
-    document_type: 'NC',
-    invoice_number: 'NC-2026-0001',
-    control_number: '00-0001500',
-    emission_date: todayStr,
-    reception_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    currency: 'VES',
-    exchange_rate: todayRate,
-    exchange_rate_date: todayStr,
-    description: 'Nota de Crédito - Ajuste comisiones enero',
-    expense_category_id: catGDS.id,
-    cost_center_id: ccOpe.id,
-    taxable_amount: inv6Taxable,
-    exempt_amount: 0,
-    non_subject_amount: 0,
-    vat_rate: 16,
-    vat_amount: inv6Vat,
-    total_amount: inv6Total,
-    total_ves: inv6Total,
-    total_usd: parseFloat((inv6Total / todayRate).toFixed(2)),
-    related_invoice_id: invoice1.id,
-    status: 'registrada',
-  });
-
-  // ─── SAMPLE PAYMENT: Pay invoice 4 fully ───
-  const [payment1] = await knex('payments').insert({
-    payment_date: todayStr,
-    payment_method: 'transferencia',
-    sender_bank_id: bankBanesco.id,
-    reference_number: 'TRF-20260228-001',
-    currency: 'VES',
-    amount: inv4Total,
-    exchange_rate: todayRate,
-    amount_other_currency: parseFloat((inv4Total / todayRate).toFixed(2)),
-    exchange_difference: 0,
-    observations: 'Pago suministros papelería',
-    created_by: adminUser.id,
-  }).returning('*');
-
-  await knex('payment_invoices').insert({
-    payment_id: payment1.id,
-    invoice_id: invoice4.id,
-    amount_applied: inv4Total,
-  });
-
-  // Mark invoice 4 as paid
-  await knex('invoices').where({ id: invoice4.id }).update({ status: 'pagada' });
-
-  // ─── SAMPLE WITHHOLDING: IVA 75% on invoice 5 ───
-  const whIvaBase = inv5Vat; // withhold on VAT
-  const whIvaAmount = parseFloat((whIvaBase * 0.75).toFixed(2));
-  await knex('config').where({ key: 'withholding_counter_iva' }).update({ value: '1' });
-
-  const [withholding1] = await knex('withholdings').insert({
-    voucher_number: `${today.getFullYear()}-IVA-000001`,
-    type: 'IVA',
-    supplier_id: supTecno.id,
-    withholding_date: todayStr,
-    fiscal_period: fiscalPeriod,
-    base_amount: whIvaBase,
-    rate: 75,
-    amount_ves: whIvaAmount,
-    amount_usd: parseFloat((whIvaAmount / todayRate).toFixed(2)),
-    exchange_rate: todayRate,
-    created_by: adminUser.id,
-  }).returning('*');
-
-  await knex('withholding_invoices').insert({
-    withholding_id: withholding1.id,
-    invoice_id: invoice5.id,
-    base_amount: whIvaBase,
-    withheld_amount: whIvaAmount,
-  });
-
-  // Update invoice 5 to pago_parcial since withholding partially covers it
-  await knex('invoices').where({ id: invoice5.id }).update({ status: 'pago_parcial' });
+  console.log('WEFLY2022 C.A. seed data created successfully.');
+  console.log('Users: admin@wefly.com.ve, contador@wefly.com.ve, tesorero@wefly.com.ve, operador@wefly.com.ve');
+  console.log('Password: admin123 (change immediately)');
 };

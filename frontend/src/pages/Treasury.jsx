@@ -9,9 +9,10 @@ const statusBadge = { completada: 'badge-green', anulada: 'badge-red' };
 const statusLabel = { completada: 'Completada', anulada: 'Anulada', pendiente: 'Pendiente', usd_recibido: 'USD Recibido' };
 
 const purchaseTypes = {
-  efectivo: 'Efectivo USD', zelle: 'Zelle', paypal: 'PayPal',
-  binance: 'Binance (USDT)', euro: 'Euros', cripto_otro: 'Cripto Otro',
+  pago_movil: 'Pago Móvil', zelle: 'Zelle', efectivo_ves: 'Efectivo VES',
+  efectivo_usd: 'Efectivo USD', transferencia_ves: 'Transferencia VES',
   transferencia_usd: 'Transferencia USD', boleto_aereo: 'Boleto Aéreo',
+  paypal: 'PayPal', binance: 'Binance (USDT)', cripto_otro: 'Cripto Otro',
 };
 
 const fmtDate = (d) => {
@@ -58,7 +59,7 @@ export default function Treasury() {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
     operation_date: today, amount_ves: '', bcv_rate: '', purchase_rate: '',
-    purchase_type: 'efectivo', supplier_id: '', description: '', destination_type: 'banco_usd',
+    purchase_type: 'pago_movil', supplier_id: '', description: '', destination_type: 'banco_usd',
   });
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -299,25 +300,51 @@ export default function Treasury() {
       {outflowData && outflowData.today_egresos_count > 0 && !outflowDismissed && (
         <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#92400e' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flex: 1 }}>
               <AlertTriangle size={20} style={{ marginTop: '2px', flexShrink: 0 }} />
-              <div>
-                <strong>Hoy se detectaron {outflowData.today_egresos_count} salida(s) de dinero manual(es).</strong>
+              <div style={{ flex: 1 }}>
+                <strong>Hoy hubo {outflowData.today_egresos_count} salida(s) de dinero.</strong>
                 <div style={{ marginTop: '0.25rem' }}>
-                  Fueron alguna compra en tasa de ganancia o de pérdida? Puedes convertirlas en operaciones de compra de divisas desde la pestaña "Compra de Divisas" para registrar la tasa real y calcular el diferencial.
+                  Fueron alguna compra en tasa de ganancia o de pérdida? Puedes registrarlas rápidamente:
                 </div>
                 {outflowData.recent_manual_egresos?.length > 0 && (
-                  <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    {outflowData.recent_manual_egresos.slice(0, 5).map((e) => (
-                      <span key={e.id} style={{ background: '#fde68a', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.78rem' }}>
-                        {fmtDate(e.flow_date)}: {fmtNum(e.amount_ves)} VES - {e.description || 'Sin descripción'}
-                      </span>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    {outflowData.recent_manual_egresos.slice(0, 5).map((egreso) => (
+                      <div key={egreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#fde68a', borderRadius: '6px', marginBottom: '0.3rem' }}>
+                        <span style={{ flex: 1, fontSize: '0.82rem' }}>
+                          {fmtDate(egreso.flow_date)}: <strong>{fmtNum(egreso.amount_ves)} VES</strong> - {egreso.description || 'Sin descripción'}
+                        </span>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => {
+                            setActiveTab('divisas');
+                            setShowForm(true);
+                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: egreso.description || '' }));
+                            setOutflowDismissed(true);
+                          }}
+                        >
+                          Ganancia
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#dc2626', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => {
+                            setActiveTab('divisas');
+                            setShowForm(true);
+                            setForm((f) => ({ ...f, amount_ves: String(egreso.amount_ves), description: egreso.description || '' }));
+                            setOutflowDismissed(true);
+                          }}
+                        >
+                          Pérdida
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}><X size={16} /></button>
+            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
           </div>
         </div>
       )}
