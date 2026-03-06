@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, FileText, AlertTriangle, TrendingUp } from 'lucide-react';
 import api from '../api';
+import { fmtNum, fmtVES, fmtUSD } from '../utils/format';
 
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
-const formatVes = (n) => `Bs. ${Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`;
-const formatUsd = (n) => `$ ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+const formatVes = fmtVES;
+const formatUsd = fmtUSD;
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -26,7 +27,7 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           {data.exchange_rate && (
             <div className="badge badge-green" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>
-              <DollarSign size={14} /> Tasa BCV: {Number(data.exchange_rate.rate).toFixed(2)} Bs/$
+              <DollarSign size={14} /> Tasa BCV: {fmtNum(data.exchange_rate.rate)} Bs/$
             </div>
           )}
           <span style={{ color: 'var(--gray-500)', fontSize: '0.85rem' }}>Período: {data.period}</span>

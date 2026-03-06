@@ -2,17 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Download, XCircle, DollarSign } from 'lucide-react';
 import api, { downloadFile } from '../api';
+import { fmtNum, fmtDate } from '../utils/format';
 
 const methodLabels = {
   transferencia: 'Transferencia', pago_movil: 'Pago Móvil', efectivo_ves: 'Efectivo VES',
   efectivo_usd: 'Efectivo USD', zelle: 'Zelle', tarjeta: 'Tarjeta', cheque: 'Cheque',
   cripto: 'Cripto', paypal: 'PayPal',
-};
-
-const fmtDate = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
 };
 
 export default function Payments() {
@@ -140,7 +135,7 @@ export default function Payments() {
 
     const amount = parseFloat(form.amount);
     if (Math.abs(totalAllocated - amount) > 0.01) {
-      setFormError(`El monto total (${amount}) no coincide con la suma asignada (${totalAllocated.toFixed(2)}). Ajuste los montos.`);
+      setFormError(`El monto total (${fmtNum(amount)}) no coincide con la suma asignada (${fmtNum(totalAllocated)}). Ajuste los montos.`);
       return;
     }
 
@@ -254,7 +249,7 @@ export default function Payments() {
                           .filter((inv) => inv.id === alloc.invoice_id || !selectedIds.includes(inv.id))
                           .map((inv) => (
                             <option key={inv.id} value={inv.id}>
-                              {inv.supplier_name} | {inv.invoice_number} | Saldo: {Number(inv.balance?.remaining || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {inv.currency}
+                              {inv.supplier_name} | {inv.invoice_number} | Saldo: {fmtNum(inv.balance?.remaining || 0)} {inv.currency}
                             </option>
                           ))}
                       </select>
@@ -277,11 +272,11 @@ export default function Payments() {
 
               {allocations.length > 0 && (
                 <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <span><strong>Total asignado:</strong> {totalAllocated.toFixed(2)}</span>
+                  <span><strong>Total asignado:</strong> {fmtNum(totalAllocated)}</span>
                   <span style={{ color: Math.abs(totalAllocated - (parseFloat(form.amount) || 0)) > 0.01 ? 'var(--danger)' : 'var(--success)' }}>
                     {Math.abs(totalAllocated - (parseFloat(form.amount) || 0)) <= 0.01
                       ? 'Montos coinciden'
-                      : `Diferencia: ${(totalAllocated - (parseFloat(form.amount) || 0)).toFixed(2)}`}
+                      : `Diferencia: ${fmtNum(totalAllocated - (parseFloat(form.amount) || 0))}`}
                   </span>
                 </div>
               )}
@@ -348,10 +343,10 @@ export default function Payments() {
                     <td>{methodLabels[p.payment_method] || p.payment_method}</td>
                     <td style={{ fontFamily: 'monospace' }}>{p.reference_number || '-'}</td>
                     <td>{p.currency}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{Number(p.amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{Number(p.amount_other_currency).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(p.amount)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(p.amount_other_currency)}</td>
                     <td style={{ fontFamily: 'monospace', color: parseFloat(p.exchange_difference) !== 0 ? 'var(--warning)' : 'inherit' }}>
-                      {Number(p.exchange_difference).toFixed(2)}
+                      {fmtNum(p.exchange_difference)}
                     </td>
                     <td><span className={`badge ${p.status === 'activo' ? 'badge-green' : 'badge-red'}`}>{p.status}</span></td>
                     <td>

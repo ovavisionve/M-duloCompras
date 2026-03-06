@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, Plus, XCircle, Eye, X, TrendingUp, TrendingDown, Wallet, ArrowUpCircle, ArrowDownCircle, Download, BarChart3, AlertTriangle, DollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, Line, Legend, ReferenceLine } from 'recharts';
 import api from '../api';
+import { fmtNum, fmtRate, fmtDate } from '../utils/format';
 
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
@@ -14,14 +15,6 @@ const purchaseTypes = {
   transferencia_usd: 'Transferencia USD', boleto_aereo: 'Boleto Aéreo',
   paypal: 'PayPal', binance: 'Binance (USDT)', cripto_otro: 'Cripto Otro',
 };
-
-const fmtDate = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-};
-const fmtNum = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtRate = (n) => n ? Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '-';
 
 export default function Treasury() {
   // Tab: 'divisas' or 'posicion'
@@ -295,6 +288,59 @@ export default function Treasury() {
           )}
         </div>
       </div>
+
+      {/* ── Inflow Alert (money coming in) ── */}
+      {outflowData && outflowData.today_ingresos_count > 0 && !outflowDismissed && (
+        <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#166534' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flex: 1 }}>
+              <ArrowUpCircle size={20} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <strong>Hoy entraron {outflowData.today_ingresos_count} ingreso(s) de dinero.</strong>
+                <div style={{ marginTop: '0.25rem' }}>
+                  Fueron venta con ganancia o pérdida cambiaria? Clasifícalos para calcular el resultado:
+                </div>
+                {outflowData.recent_manual_ingresos?.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    {outflowData.recent_manual_ingresos.slice(0, 5).map((ingreso) => (
+                      <div key={ingreso.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: '#bbf7d0', borderRadius: '6px', marginBottom: '0.3rem' }}>
+                        <span style={{ flex: 1, fontSize: '0.82rem' }}>
+                          {fmtDate(ingreso.flow_date)}: <strong>{fmtNum(ingreso.amount_ves)} VES</strong> ({fmtNum(ingreso.usd_equivalent)} USD) - {ingreso.description || 'Sin descripción'}
+                        </span>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#16a34a', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => {
+                            setActiveTab('divisas');
+                            setShowForm(true);
+                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Venta: ${ingreso.description || ''}`.trim() }));
+                            setOutflowDismissed(true);
+                          }}
+                        >
+                          Ganancia
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#dc2626', color: 'white', border: 'none', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => {
+                            setActiveTab('divisas');
+                            setShowForm(true);
+                            setForm((f) => ({ ...f, amount_ves: String(ingreso.amount_ves), description: `Venta: ${ingreso.description || ''}`.trim() }));
+                            setOutflowDismissed(true);
+                          }}
+                        >
+                          Pérdida
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setOutflowDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 600, marginLeft: '0.5rem' }}><X size={16} /></button>
+          </div>
+        </div>
+      )}
 
       {/* ── Outflow Alert ── */}
       {outflowData && outflowData.today_egresos_count > 0 && !outflowDismissed && (

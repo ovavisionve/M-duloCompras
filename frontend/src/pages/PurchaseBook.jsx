@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download, Lock, CheckCircle } from 'lucide-react';
 import api, { downloadFile } from '../api';
+import { fmtNum } from '../utils/format';
 
 export default function PurchaseBook() {
   const now = new Date();
@@ -84,19 +85,19 @@ export default function PurchaseBook() {
           <div className="stats-grid" style={{ marginBottom: '1rem' }}>
             <div className="stat-card">
               <div className="label">Base Imponible</div>
-              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {book.totals.total_taxable.toFixed(2)}</div>
+              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {fmtNum(book.totals.total_taxable)}</div>
             </div>
             <div className="stat-card">
               <div className="label">Exento</div>
-              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {book.totals.total_exempt.toFixed(2)}</div>
+              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {fmtNum(book.totals.total_exempt)}</div>
             </div>
             <div className="stat-card">
               <div className="label">IVA</div>
-              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {book.totals.total_vat.toFixed(2)}</div>
+              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {fmtNum(book.totals.total_vat)}</div>
             </div>
             <div className="stat-card">
               <div className="label">Total</div>
-              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {book.totals.grand_total.toFixed(2)}</div>
+              <div className="value" style={{ fontSize: '1.1rem' }}>Bs. {fmtNum(book.totals.grand_total)}</div>
             </div>
           </div>
 
@@ -127,10 +128,10 @@ export default function PurchaseBook() {
                     <td>{e.invoice_number}</td>
                     <td>{e.control_number || '-'}</td>
                     <td><span className="badge badge-gray">{e.document_type}</span></td>
-                    <td style={{ fontFamily: 'monospace' }}>{e.taxable_purchases?.toFixed(2)}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{e.exempt_purchases?.toFixed(2)}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{e.vat_amount?.toFixed(2)}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{e.iva_withheld?.toFixed(2)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(e.taxable_purchases)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(e.exempt_purchases)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(e.vat_amount)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{fmtNum(e.iva_withheld)}</td>
                   </tr>
                 ))}
                 {!book.entries.length && <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>Sin facturas para el período</td></tr>}

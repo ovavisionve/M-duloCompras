@@ -2,12 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Download, FileText, Filter, RefreshCw, Search, Users } from 'lucide-react';
 import api, { downloadFile } from '../api';
+import { fmtNum, fmtDate, fmtVES, fmtUSD } from '../utils/format';
 
 const PIE_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#0ea5e9', '#f97316', '#14b8a6', '#ec4899', '#6366f1'];
-
-const fmtVES = (v) => `Bs. ${Number(v || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`;
-const fmtUSD = (v) => `$ ${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-VE') : '-';
 const mono = { fontFamily: 'monospace', fontSize: '0.85rem' };
 
 function ExportButtons({ baseUrl, params, label }) {
@@ -647,10 +644,10 @@ export default function Reports() {
                         <td style={mono}>{p.reference_number}</td>
                         <td>{p.payment_method}</td>
                         <td>{p.currency}</td>
-                        <td style={mono}>{Number(p.amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
-                        <td style={mono}>{Number(p.exchange_rate).toFixed(2)}</td>
+                        <td style={mono}>{fmtNum(p.amount)}</td>
+                        <td style={mono}>{fmtNum(p.exchange_rate)}</td>
                         <td style={{ ...mono, fontWeight: 'bold', color: parseFloat(p.exchange_difference) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                          {Number(p.exchange_difference).toFixed(2)}
+                          {fmtNum(p.exchange_difference)}
                         </td>
                         <td style={{ fontSize: '0.8rem' }}>{p.related_invoices || '-'}</td>
                         <td style={{ fontSize: '0.8rem' }}>{p.supplier_names || '-'}</td>
@@ -836,7 +833,7 @@ export default function Reports() {
                     <strong style={{ fontSize: '0.85rem' }}>Por Moneda:</strong>
                     <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
                       {data.summary?.by_currency && Object.entries(data.summary.by_currency).map(([c, d]) => (
-                        <span key={c} className="badge badge-green">{c}: {d.count} ({Number(d.total).toLocaleString('es-VE', { minimumFractionDigits: 2 })})</span>
+                        <span key={c} className="badge badge-green">{c}: {d.count} ({fmtNum(d.total)})</span>
                       ))}
                     </div>
                   </div>
@@ -853,13 +850,13 @@ export default function Reports() {
                         <td style={mono}>{p.reference_number}</td>
                         <td>{p.payment_method}</td>
                         <td>{p.currency}</td>
-                        <td style={mono}>{Number(p.amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
-                        <td style={mono}>{Number(p.exchange_rate).toFixed(2)}</td>
+                        <td style={mono}>{fmtNum(p.amount)}</td>
+                        <td style={mono}>{fmtNum(p.exchange_rate)}</td>
                         <td style={{ ...mono, color: parseFloat(p.exchange_difference || 0) !== 0 ? (parseFloat(p.exchange_difference) > 0 ? 'var(--success)' : 'var(--danger)') : undefined }}>
-                          {Number(p.exchange_difference || 0).toFixed(2)}
+                          {fmtNum(p.exchange_difference)}
                         </td>
-                        <td style={mono}>{Number(p.islr_withheld || 0).toFixed(2)}</td>
-                        <td style={mono}>{Number(p.iva_withheld || 0).toFixed(2)}</td>
+                        <td style={mono}>{fmtNum(p.islr_withheld)}</td>
+                        <td style={mono}>{fmtNum(p.iva_withheld)}</td>
                         <td style={{ fontSize: '0.8rem' }}>{(p.observations || '').substring(0, 30)}</td>
                       </tr>
                     ))}

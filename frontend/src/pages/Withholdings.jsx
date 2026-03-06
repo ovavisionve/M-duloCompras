@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Download, XCircle, Eye, FileText } from 'lucide-react';
 import api, { downloadFile } from '../api';
-
-const fmtDate = (d) => {
-  if (!d) return '';
-  // If already formatted as DD/MM/YYYY, return as-is
-  if (typeof d === 'string' && d.includes('/') && d.length <= 10) return d;
-  const dt = new Date(d);
-  if (isNaN(dt.getTime())) return d;
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-};
+import { fmtNum, fmtDate } from '../utils/format';
 
 export default function Withholdings() {
   const [withholdings, setWithholdings] = useState([]);
@@ -240,8 +232,8 @@ export default function Withholdings() {
                     <input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => toggleInvoice(inv.id)} />
                     <span style={{ fontFamily: 'monospace' }}>{inv.invoice_number}</span>
                     <span style={{ color: 'var(--gray-500)' }}>|</span>
-                    <span>Total: {Number(inv.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {inv.currency}</span>
-                    {form.type === 'IVA' && <span style={{ color: 'var(--gray-500)' }}>| IVA: {Number(inv.vat_amount || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>}
+                    <span>Total: {fmtNum(inv.total_amount)} {inv.currency}</span>
+                    {form.type === 'IVA' && <span style={{ color: 'var(--gray-500)' }}>| IVA: {fmtNum(inv.vat_amount || 0)}</span>}
                     <span style={{ color: 'var(--gray-500)' }}>| {fmtDate(inv.emission_date)}</span>
                   </label>
                 ))}
@@ -252,11 +244,11 @@ export default function Withholdings() {
                     <strong>Vista previa de retención:</strong>
                     {preview.details.map((d, i) => (
                       <div key={i} style={{ marginLeft: '1rem', color: 'var(--gray-700)' }}>
-                        {d.invoice_number}: Base {d.base.toFixed(2)} x {form.rate}% = <strong>{d.withheld.toFixed(2)}</strong>
+                        {d.invoice_number}: Base {fmtNum(d.base)} x {form.rate}% = <strong>{fmtNum(d.withheld)}</strong>
                       </div>
                     ))}
                     <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>
-                      Total Base: {preview.totalBase.toFixed(2)} | Total Retenido: {preview.totalWithheld.toFixed(2)}
+                      Total Base: {fmtNum(preview.totalBase)} | Total Retenido: {fmtNum(preview.totalWithheld)}
                     </div>
                   </div>
                 )}
@@ -288,13 +280,13 @@ export default function Withholdings() {
           </div>
           <div className="form-row" style={{ marginTop: '0.5rem' }}>
             <div><strong>Proveedor:</strong> {detail.supplier_name} ({detail.supplier_rif})</div>
-            <div><strong>Base:</strong> {Number(detail.base_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
+            <div><strong>Base:</strong> {fmtNum(detail.base_amount)}</div>
             <div><strong>Tasa:</strong> {detail.rate}%</div>
             <div><strong>Estado:</strong> <span className={`badge ${detail.status === 'activa' ? 'badge-green' : 'badge-red'}`}>{detail.status}</span></div>
           </div>
           <div className="form-row" style={{ marginTop: '0.5rem' }}>
-            <div><strong>Monto VES:</strong> {Number(detail.amount_ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
-            <div><strong>Monto USD:</strong> {Number(detail.amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+            <div><strong>Monto VES:</strong> {fmtNum(detail.amount_ves)}</div>
+            <div><strong>Monto USD:</strong> {fmtNum(detail.amount_usd)}</div>
             <div><strong>Tasa BCV:</strong> {detail.exchange_rate}</div>
           </div>
 
@@ -303,7 +295,7 @@ export default function Withholdings() {
               <strong>Facturas asociadas:</strong>
               {detail.invoices.map((inv, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
-                  {inv.invoice_number} | Base: {Number(inv.base_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} | Retenido: {Number(inv.withheld_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                  {inv.invoice_number} | Base: {fmtNum(inv.base_amount)} | Retenido: {fmtNum(inv.withheld_amount)}
                 </div>
               ))}
             </div>
@@ -376,9 +368,9 @@ export default function Withholdings() {
                 <td>{fmtDate(w.withholding_date)}</td>
                 <td>{(w.supplier_name || '').substring(0, 25)}</td>
                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{w.supplier_rif}</td>
-                <td style={{ fontFamily: 'monospace' }}>{Number(w.base_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                <td style={{ fontFamily: 'monospace' }}>{fmtNum(w.base_amount)}</td>
                 <td>{w.rate}%</td>
-                <td style={{ fontFamily: 'monospace' }}>{Number(w.amount_ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                <td style={{ fontFamily: 'monospace' }}>{fmtNum(w.amount_ves)}</td>
                 <td><span className={`badge ${w.status === 'activa' ? 'badge-green' : 'badge-red'}`}>{w.status}</span></td>
                 <td>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>

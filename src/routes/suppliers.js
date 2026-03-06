@@ -74,7 +74,7 @@ router.get('/', authenticate, async (req, res, next) => {
     if (taxpayer_type) query.where('taxpayer_type', taxpayer_type);
     if (is_active !== undefined) query.where('is_active', is_active === 'true');
 
-    const [{ count }] = await query.clone().count();
+    const [{ count }] = await query.clone().clear('select').count('* as count');
     const data = await query.orderBy('business_name').limit(limit).offset((page - 1) * limit);
 
     res.json({ success: true, ...paginate(data, parseInt(count), page, limit) });
@@ -217,7 +217,7 @@ router.get('/:id/invoices', authenticate, async (req, res, next) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     const query = db('invoices').where({ supplier_id: req.params.id });
-    const [{ count }] = await query.clone().count();
+    const [{ count }] = await query.clone().clear('select').count('* as count');
     const data = await query.orderBy('emission_date', 'desc').limit(limit).offset((page - 1) * limit);
     res.json({ success: true, ...paginate(data, parseInt(count), page, limit) });
   } catch (err) { next(err); }

@@ -250,7 +250,7 @@ router.get('/bank-accounts/:id/movements', authenticate, async (req, res, next) 
     if (to_date) query.where('bank_movements.movement_date', '<=', to_date);
     if (status) query.where('bank_movements.reconciliation_status', status);
 
-    const [{ count }] = await query.clone().count();
+    const [{ count }] = await query.clone().clear('select').count('* as count');
     const data = await query.orderBy('bank_movements.movement_date', 'desc').limit(limit).offset((page - 1) * limit);
 
     res.json({ success: true, data, pagination: { total: parseInt(count), page: parseInt(page), limit: parseInt(limit) } });

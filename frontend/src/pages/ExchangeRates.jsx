@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { RefreshCw, Plus } from 'lucide-react';
 import api from '../api';
+import { fmtNum } from '../utils/format';
 
 export default function ExchangeRates() {
   const [rates, setRates] = useState([]);
@@ -49,7 +50,7 @@ export default function ExchangeRates() {
         <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
           <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
             <div className="label">Tasa BCV Hoy</div>
-            <div className="value">Bs. {Number(todayRate.rate).toFixed(2)}</div>
+            <div className="value">Bs. {fmtNum(todayRate.rate)}</div>
             <div className="sub">Fecha: {todayRate.rate_date} | Fuente: {todayRate.source === 'bcv_api' ? 'BCV API' : 'Manual'}</div>
           </div>
         </div>
@@ -83,7 +84,7 @@ export default function ExchangeRates() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" fontSize={11} />
               <YAxis fontSize={11} domain={['auto', 'auto']} />
-              <Tooltip formatter={(v) => `Bs. ${v.toFixed(2)}`} />
+              <Tooltip formatter={(v) => `Bs. ${fmtNum(v)}`} />
               <Line type="monotone" dataKey="rate" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>

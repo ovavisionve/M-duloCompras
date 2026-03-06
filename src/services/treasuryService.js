@@ -177,7 +177,7 @@ async function listOperations({ status, from_date, to_date, supplier_id, purchas
   if (supplier_id && supplier_id.trim()) query.where('treasury_operations.supplier_id', supplier_id.trim());
   if (purchase_type && purchase_type.trim()) query.where('treasury_operations.purchase_type', purchase_type.trim());
 
-  const [{ count }] = await query.clone().count();
+  const [{ count }] = await query.clone().clear('select').count('* as count');
   const data = await query.orderBy('treasury_operations.operation_date', 'desc').limit(limit).offset((page - 1) * limit);
 
   return { data, pagination: { total: parseInt(count), page: parseInt(page), limit: parseInt(limit) } };
@@ -500,6 +500,7 @@ async function recordCashFlow(data, userId, ip) {
     usd_equivalent: usdEquiv,
     description: description || null,
     reference_type: 'manual',
+    status: 'activo',
     created_by: userId,
   }).returning('*');
 
@@ -579,7 +580,7 @@ async function listCashFlows({ flow_type, from_date, to_date, page = 1, limit = 
   if (from_date && from_date.trim()) query.where('treasury_cash_flows.flow_date', '>=', from_date.trim());
   if (to_date && to_date.trim()) query.where('treasury_cash_flows.flow_date', '<=', to_date.trim());
 
-  const [{ count }] = await query.clone().count();
+  const [{ count }] = await query.clone().clear('select').count('* as count');
   const data = await query.orderBy('treasury_cash_flows.flow_date', 'desc').limit(limit).offset((page - 1) * limit);
 
   // Enrich with running balance
@@ -890,9 +891,23 @@ async function detectOutflows() {
     .count('id as count')
     .first();
 
+  // Count today's ingresos (manual)
+  const todayIngresos = await db('treasury_cash_flows')
+    .where({ status: 'activo', flow_type: 'ingreso', reference_type: 'manual' })
+    .where('flow_date', '=', todayStr)
+    .count('id as count')
+    .first();
+
   // Recent unclassified manual egresos (could be purchases)
   const recentManualEgresos = await db('treasury_cash_flows')
     .where({ status: 'activo', flow_type: 'egreso', reference_type: 'manual' })
+    .where('flow_date', '>=', fromDate)
+    .orderBy('flow_date', 'desc')
+    .select('*');
+
+  // Recent manual ingresos (could be sales with gain/loss)
+  const recentManualIngresos = await db('treasury_cash_flows')
+    .where({ status: 'activo', flow_type: 'ingreso', reference_type: 'manual' })
     .where('flow_date', '>=', fromDate)
     .orderBy('flow_date', 'desc')
     .select('*');
@@ -913,7 +928,9 @@ async function detectOutflows() {
 
   return {
     today_egresos_count: parseInt(todayEgresos?.count || 0),
+    today_ingresos_count: parseInt(todayIngresos?.count || 0),
     recent_manual_egresos: recentManualEgresos,
+    recent_manual_ingresos: recentManualIngresos,
     recent_operations_count: parseInt(recentOpsCount?.count || 0),
     today_bcv_rate: todayBcv,
   };

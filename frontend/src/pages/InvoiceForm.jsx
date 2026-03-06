@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { fmtNum } from '../utils/format';
 
 const INVOICE_DRAFT_KEY = 'draft_invoice';
 
@@ -253,7 +254,7 @@ export default function InvoiceForm() {
             </div>
             <div className="form-group">
               <label>Monto IVA (calculado)</label>
-              <input type="text" value={calculated.vatAmount.toFixed(2)} readOnly style={{ background: 'var(--gray-100)' }} />
+              <input type="text" value={fmtNum(calculated.vatAmount)} readOnly style={{ background: 'var(--gray-100)' }} />
             </div>
             <div className="form-group">
               <label>IGTF (si aplica)</label>
@@ -263,9 +264,9 @@ export default function InvoiceForm() {
 
           <div style={{ background: 'var(--gray-50)', padding: '1rem', borderRadius: 'var(--radius)', marginTop: '0.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-              <div><strong>Total ({form.currency}):</strong> {calculated.total.toFixed(2)}</div>
-              <div><strong>Total VES:</strong> Bs. {calculated.totalVes.toFixed(2)}</div>
-              <div><strong>Total USD:</strong> $ {calculated.totalUsd.toFixed(2)}</div>
+              <div><strong>Total ({form.currency}):</strong> {fmtNum(calculated.total)}</div>
+              <div><strong>Total VES:</strong> Bs. {fmtNum(calculated.totalVes)}</div>
+              <div><strong>Total USD:</strong> $ {fmtNum(calculated.totalUsd)}</div>
             </div>
           </div>
         </div>

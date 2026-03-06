@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Link2, AlertTriangle, Settings, Wifi, WifiOff, Save } from 'lucide-react';
 import api from '../api';
-
-const fmtDate = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-};
+import { fmtNum, fmtDate } from '../utils/format';
 
 export default function Banking() {
   const [accounts, setAccounts] = useState([]);
@@ -219,7 +214,7 @@ export default function Banking() {
           <div className="stat-card" key={a.id}>
             <div className="label">{a.bank_name} ({a.currency})</div>
             <div className="value" style={{ fontSize: '1.1rem' }}>
-              {a.currency === 'VES' ? 'Bs.' : '$'} {Number(a.current_balance).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+              {a.currency === 'VES' ? 'Bs.' : '$'} {fmtNum(a.current_balance)}
             </div>
             <div className="sub">{a.account_number}</div>
           </div>
@@ -247,12 +242,12 @@ export default function Banking() {
                   <td style={{ fontFamily: 'monospace' }}>{m.reference || '-'}</td>
                   <td>{m.description || '-'}</td>
                   <td style={{ fontFamily: 'monospace', color: parseFloat(m.debit) > 0 ? 'var(--danger)' : 'inherit' }}>
-                    {parseFloat(m.debit) > 0 ? Number(m.debit).toFixed(2) : '-'}
+                    {parseFloat(m.debit) > 0 ? fmtNum(m.debit) : '-'}
                   </td>
                   <td style={{ fontFamily: 'monospace', color: parseFloat(m.credit) > 0 ? 'var(--success)' : 'inherit' }}>
-                    {parseFloat(m.credit) > 0 ? Number(m.credit).toFixed(2) : '-'}
+                    {parseFloat(m.credit) > 0 ? fmtNum(m.credit) : '-'}
                   </td>
-                  <td style={{ fontFamily: 'monospace' }}>{m.balance != null ? Number(m.balance).toFixed(2) : '-'}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{m.balance != null ? fmtNum(m.balance) : '-'}</td>
                   <td>
                     <span className={`badge ${statusBadge[m.reconciliation_status]}`}>
                       {statusLabel[m.reconciliation_status]}

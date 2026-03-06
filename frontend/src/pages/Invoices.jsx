@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Eye, FileText, CheckCircle, XCircle, AlertTriangle, RotateCcw, Edit3, DollarSign, X } from 'lucide-react';
 import api from '../api';
+import { fmtNum, fmtDate } from '../utils/format';
 
 const statusBadge = {
   borrador: 'badge-gray',
@@ -27,12 +28,6 @@ const methodLabels = {
   transferencia: 'Transferencia', pago_movil: 'Pago Móvil', efectivo_ves: 'Efectivo VES',
   efectivo_usd: 'Efectivo USD', zelle: 'Zelle', tarjeta: 'Tarjeta', cheque: 'Cheque',
   cripto: 'Cripto', paypal: 'PayPal',
-};
-
-const fmtDate = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
 };
 
 export default function Invoices() {
@@ -211,19 +206,19 @@ export default function Invoices() {
             <div><strong>Total:</strong> {detail.total_amount} {detail.currency}</div>
           </div>
           <div style={{ marginTop: '0.5rem' }}>
-            <strong>Total VES:</strong> {Number(detail.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })} |{' '}
-            <strong>Total USD:</strong> {Number(detail.total_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <strong>Total VES:</strong> {fmtNum(detail.total_ves)} |{' '}
+            <strong>Total USD:</strong> {fmtNum(detail.total_usd)}
           </div>
 
           {/* ── Balance / Saldo Pendiente ── */}
           {balance && !['borrador', 'anulada'].includes(detail.status) && (
             <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: '6px', background: balance.remaining <= 0.01 ? '#dcfce7' : '#fef9c3', border: `1px solid ${balance.remaining <= 0.01 ? '#86efac' : '#fde047'}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.9rem' }}>
-                <div><strong>Total Factura:</strong> {Number(balance.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {balance.currency}</div>
-                <div><strong>Pagado:</strong> {Number(balance.total_paid).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
-                {balance.total_withheld > 0 && <div><strong>Retenido:</strong> {Number(balance.total_withheld).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>}
+                <div><strong>Total Factura:</strong> {fmtNum(balance.total_amount)} {balance.currency}</div>
+                <div><strong>Pagado:</strong> {fmtNum(balance.total_paid)}</div>
+                {balance.total_withheld > 0 && <div><strong>Retenido:</strong> {fmtNum(balance.total_withheld)}</div>}
                 <div style={{ fontWeight: 'bold', color: balance.remaining <= 0.01 ? '#16a34a' : '#d97706' }}>
-                  Saldo Pendiente: {Number(balance.remaining).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {balance.currency}
+                  Saldo Pendiente: {fmtNum(balance.remaining)} {balance.currency}
                 </div>
               </div>
             </div>
@@ -234,7 +229,7 @@ export default function Invoices() {
               <strong>Pagos aplicados:</strong>
               {detail.payments.map((p, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
-                  {fmtDate(p.payment_date)} - {p.payment_method} - {Number(p.amount_applied).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {p.currency} (Ref: {p.reference_number || 'N/A'})
+                  {fmtDate(p.payment_date)} - {p.payment_method} - {fmtNum(p.amount_applied)} {p.currency} (Ref: {p.reference_number || 'N/A'})
                 </div>
               ))}
             </div>
@@ -244,7 +239,7 @@ export default function Invoices() {
               <strong>Retenciones aplicadas:</strong>
               {detail.withholdings.map((w, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
-                  {w.withholding_type} - {Number(w.withheld_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Comp: {w.voucher_number || 'N/A'})
+                  {w.withholding_type} - {fmtNum(w.withheld_amount)} (Comp: {w.voucher_number || 'N/A'})
                 </div>
               ))}
             </div>
@@ -340,7 +335,7 @@ export default function Invoices() {
                 <td>{inv.invoice_number}</td>
                 <td>{inv.control_number || '-'}</td>
                 <td>{inv.currency}</td>
-                <td style={{ fontFamily: 'monospace' }}>{Number(inv.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                <td style={{ fontFamily: 'monospace' }}>{fmtNum(inv.total_amount)}</td>
                 <td><span className={`badge ${statusBadge[inv.status]}`}>{statusLabel[inv.status]}</span></td>
                 <td>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -376,11 +371,11 @@ export default function Invoices() {
                 <div><strong>Proveedor:</strong> {payInvoice.supplier_name}</div>
                 <div><strong>Factura:</strong> {payInvoice.invoice_number}</div>
                 <div><strong>Moneda:</strong> {payInvoice.currency}</div>
-                <div><strong>Total:</strong> {Number(payInvoice.total_amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
+                <div><strong>Total:</strong> {fmtNum(payInvoice.total_amount)}</div>
               </div>
               {payBalance && (
                 <div style={{ marginTop: '0.5rem', fontWeight: 'bold', color: 'var(--warning)' }}>
-                  Saldo Pendiente: {Number(payBalance.remaining).toLocaleString('es-VE', { minimumFractionDigits: 2 })} {payBalance.currency}
+                  Saldo Pendiente: {fmtNum(payBalance.remaining)} {payBalance.currency}
                 </div>
               )}
             </div>
