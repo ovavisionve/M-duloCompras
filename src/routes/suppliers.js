@@ -2,6 +2,8 @@ const router = require('express').Router();
 const db = require('../database/connection');
 const { authenticate, authorize } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
+const { body } = require('express-validator');
+const { validate } = require('../middleware/validate');
 const { validateRif, paginate } = require('../utils/helpers');
 const auditService = require('../services/auditService');
 
@@ -263,11 +265,14 @@ router.get('/:id/invoices', authenticate, async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authenticate, authorize('admin', 'contador', 'operador'), async (req, res, next) => {
+router.post('/', authenticate, authorize('admin', 'contador', 'operador'), [
+  body('rif').trim().notEmpty().withMessage('RIF requerido').matches(/^[VJEGP]-\d{8}-\d$/).withMessage('Formato de RIF inválido (V/J/E/G/P-XXXXXXXX-X)'),
+  body('business_name').trim().notEmpty().withMessage('Razón Social requerida').isLength({ max: 200 }).withMessage('Razón Social máximo 200 caracteres'),
+  body('email').optional({ values: 'falsy' }).isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('taxpayer_type').optional().isIn(['ordinario', 'especial']).withMessage('Tipo de contribuyente inválido'),
+], validate, async (req, res, next) => {
   try {
     const { rif, business_name, fiscal_address, phone, email, taxpayer_type, is_retention_agent } = req.body;
-    if (!rif || !business_name) throw new AppError('RIF y Razón Social son requeridos', 400);
-    if (!validateRif(rif)) throw new AppError('Formato de RIF inválido (V/J/E/G/P-XXXXXXXX-X)', 400, 'INVALID_RIF');
 
     const existing = await db('suppliers').where({ rif }).first();
     if (existing) throw new AppError('Ya existe un proveedor con este RIF', 409);

@@ -2,6 +2,12 @@ const jwt = require('jsonwebtoken');
 const db = require('../database/connection');
 const { AppError } = require('./errorHandler');
 
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET environment variable is required');
+  return secret;
+}
+
 /**
  * JWT authentication middleware
  */
@@ -13,7 +19,7 @@ async function authenticate(req, res, next) {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    const decoded = jwt.verify(token, getJwtSecret());
 
     const user = await db('users').where({ id: decoded.userId, is_active: true }).first();
     if (!user) {
@@ -84,4 +90,4 @@ function requireScope(scope) {
   };
 }
 
-module.exports = { authenticate, authenticateApiKey, authorize, requireScope };
+module.exports = { authenticate, authenticateApiKey, authorize, requireScope, getJwtSecret };

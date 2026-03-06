@@ -12,13 +12,28 @@ const storage = multer.diskStorage({
   },
 });
 
+// Validate both MIME type and extension
+const allowedTypes = {
+  'application/pdf': ['.pdf'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'text/csv': ['.csv'],
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+};
+const allowedExtensions = Object.values(allowedTypes).flat();
+
 const fileFilter = (req, file, cb) => {
-  const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.csv', '.xlsx', '.xls'];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) {
+  const mimeExts = allowedTypes[file.mimetype];
+  if (mimeExts && mimeExts.includes(ext)) {
     cb(null, true);
+  } else if (!mimeExts && allowedExtensions.includes(ext)) {
+    // Extension valid but MIME mismatch — reject (possible spoofing)
+    cb(new Error(`MIME type ${file.mimetype} no coincide con extensión ${ext}`), false);
   } else {
-    cb(new Error(`Tipo de archivo no permitido: ${ext}`), false);
+    cb(new Error(`Tipo de archivo no permitido: ${ext} (${file.mimetype})`), false);
   }
 };
 

@@ -13,7 +13,10 @@ const app = express();
 
 // Security & parsing
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGINS?.split(',') || '*' }));
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : ['http://localhost:5173', 'http://localhost:10000'];
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -47,8 +50,16 @@ app.use('/api/v1/webhooks', require('./routes/webhooks'));
 app.use('/api/v1/dashboard', require('./routes/dashboard'));
 app.use('/api/v1/treasury', require('./routes/treasury'));
 
-// Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+// Health check with DB connectivity
+app.get('/health', async (req, res) => {
+  try {
+    const db = require('./database/connection');
+    await db.raw('SELECT 1');
+    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString(), uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: 'error', database: 'disconnected', error: err.message, timestamp: new Date().toISOString() });
+  }
+});
 
 // Serve frontend in production
 if (process.env.NODE_ENV === 'production') {

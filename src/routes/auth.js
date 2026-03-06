@@ -2,8 +2,11 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../database/connection');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, getJwtSecret } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
+const { authRateLimiter } = require('../middleware/rateLimiter');
+const { body } = require('express-validator');
+const { validate } = require('../middleware/validate');
 const auditService = require('../services/auditService');
 
 /**
@@ -34,10 +37,12 @@ const auditService = require('../services/auditService');
  *       401:
  *         description: Credenciales inválidas
  */
-router.post('/login', async (req, res, next) => {
+router.post('/login', authRateLimiter, [
+  body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('password').notEmpty().withMessage('Contraseña requerida'),
+], validate, async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) throw new AppError('Email y contraseña requeridos', 400, 'MISSING_CREDENTIALS');
 
     const user = await db('users').where({ email, is_active: true }).first();
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
@@ -46,13 +51,13 @@ router.post('/login', async (req, res, next) => {
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || 'dev-secret',
+      getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRATION || '8h' }
     );
 
     const refreshToken = jwt.sign(
       { userId: user.id, type: 'refresh' },
-      process.env.JWT_SECRET || 'dev-secret',
+      getJwtSecret(),
       { expiresIn: process.env.JWT_REFRESH_EXPIRATION || '7d' }
     );
 
@@ -96,12 +101,12 @@ router.post('/login', async (req, res, next) => {
  *       401:
  *         description: Token inválido o usuario no encontrado
  */
-router.post('/refresh', async (req, res, next) => {
+router.post('/refresh', authRateLimiter, async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) throw new AppError('Refresh token requerido', 400);
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET || 'dev-secret');
+    const decoded = jwt.verify(refreshToken, getJwtSecret());
     if (decoded.type !== 'refresh') throw new AppError('Token inválido', 401);
 
     const user = await db('users').where({ id: decoded.userId, is_active: true }).first();
@@ -109,7 +114,7 @@ router.post('/refresh', async (req, res, next) => {
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || 'dev-secret',
+      getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRATION || '8h' }
     );
 

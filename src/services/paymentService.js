@@ -66,34 +66,39 @@ async function createPayment(data, userId, ip) {
     }
   }
 
-  const [payment] = await db('payments').insert({
-    payment_date: data.payment_date,
-    payment_method: data.payment_method,
-    sender_bank_id: data.sender_bank_id || null,
-    receiver_bank_id: data.receiver_bank_id || null,
-    reference_number: data.reference_number || null,
-    currency: data.currency,
-    amount: data.amount,
-    exchange_rate: exchangeRate,
-    amount_other_currency: amountOtherCurrency,
-    exchange_difference: totalExchangeDiff,
-    islr_withheld: data.islr_withheld || 0,
-    iva_withheld: data.iva_withheld || 0,
-    attachment_path: data.attachment_path || null,
-    observations: data.observations || null,
-    created_by: userId,
-  }).returning('*');
+  // Wrap insert + links in a transaction for atomicity
+  const payment = await db.transaction(async (trx) => {
+    const [pay] = await trx('payments').insert({
+      payment_date: data.payment_date,
+      payment_method: data.payment_method,
+      sender_bank_id: data.sender_bank_id || null,
+      receiver_bank_id: data.receiver_bank_id || null,
+      reference_number: data.reference_number || null,
+      currency: data.currency,
+      amount: data.amount,
+      exchange_rate: exchangeRate,
+      amount_other_currency: amountOtherCurrency,
+      exchange_difference: totalExchangeDiff,
+      islr_withheld: data.islr_withheld || 0,
+      iva_withheld: data.iva_withheld || 0,
+      attachment_path: data.attachment_path || null,
+      observations: data.observations || null,
+      created_by: userId,
+    }).returning('*');
 
-  // Link payment to invoices
-  for (const alloc of data.invoice_allocations) {
-    await db('payment_invoices').insert({
-      payment_id: payment.id,
-      invoice_id: alloc.invoice_id,
-      amount_applied: alloc.amount,
-    });
-  }
+    // Link payment to invoices
+    for (const alloc of data.invoice_allocations) {
+      await trx('payment_invoices').insert({
+        payment_id: pay.id,
+        invoice_id: alloc.invoice_id,
+        amount_applied: alloc.amount,
+      });
+    }
 
-  // Recalculate invoice statuses
+    return pay;
+  });
+
+  // Recalculate invoice statuses (outside trx so it reads committed data)
   for (const alloc of data.invoice_allocations) {
     await invoiceService.recalculateInvoiceStatus(alloc.invoice_id);
   }
