@@ -4,5 +4,6 @@ uploads/
 logs/
 coverage/
 dist/
+!frontend/dist/
 *.log
 .DS_Store
