@@ -350,9 +350,23 @@ async function getDashboardData() {
   // Cash position
   const flows = await db('treasury_cash_flows').where({ status: 'activo' });
   let balanceVes = 0;
+  let totalIngresosVes = 0;
+  let totalEgresosVes = 0;
+  let monthIngresosVes = 0;
+  let monthEgresosVes = 0;
+  let monthFlowCount = 0;
   flows.forEach((f) => {
     const ves = parseFloat(f.amount_ves) || 0;
-    balanceVes += f.flow_type === 'ingreso' ? ves : -ves;
+    const d = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+    if (f.flow_type === 'ingreso') {
+      balanceVes += ves;
+      totalIngresosVes += ves;
+      if (d >= startOfMonth && d <= endOfMonth) { monthIngresosVes += ves; monthFlowCount++; }
+    } else {
+      balanceVes -= ves;
+      totalEgresosVes += ves;
+      if (d >= startOfMonth && d <= endOfMonth) { monthEgresosVes += ves; monthFlowCount++; }
+    }
   });
 
   // --- Chart: VES by day (current month) ---
@@ -442,6 +456,23 @@ async function getDashboardData() {
   const avgBcv = opsWithBcv.length
     ? round2(opsWithBcv.reduce((s, o) => s + parseFloat(o.bcv_rate), 0) / opsWithBcv.length) : 0;
 
+  // --- Chart: VES flow by type (ingreso vs egreso) for donut ---
+  const flowTypeMap = {};
+  flows.forEach((f) => {
+    const d = typeof f.flow_date === 'string' ? f.flow_date : f.flow_date.toISOString().split('T')[0];
+    if (d >= startOfMonth && d <= endOfMonth) {
+      const desc = f.description || (f.flow_type === 'ingreso' ? 'Ingreso' : 'Egreso');
+      const key = f.reference_type === 'treasury_operation' ? 'Compra Divisas'
+        : f.flow_type === 'ingreso' ? (desc.length > 25 ? desc.substring(0, 25) : desc)
+        : (desc.length > 25 ? desc.substring(0, 25) : desc);
+      const cat = f.flow_type === 'ingreso' ? `↑ ${key}` : `↓ ${key}`;
+      if (!flowTypeMap[cat]) flowTypeMap[cat] = { type: cat, ves: 0, count: 0, flow_type: f.flow_type };
+      flowTypeMap[cat].ves += parseFloat(f.amount_ves) || 0;
+      flowTypeMap[cat].count++;
+    }
+  });
+  const flowByType = Object.values(flowTypeMap).map((d) => ({ ...d, ves: round2(Math.abs(d.ves)) }));
+
   return {
     period: `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
     kpis: {
@@ -456,11 +487,23 @@ async function getDashboardData() {
       avg_bcv_rate: avgBcv,
       spread_pct: avgBcv > 0 ? round2(((avgPurchase - avgBcv) / avgBcv) * 100) : 0,
     },
+    // New: VES position KPIs
+    position: {
+      month_ingresos_ves: round2(monthIngresosVes),
+      month_egresos_ves: round2(monthEgresosVes),
+      month_neto_ves: round2(monthIngresosVes - monthEgresosVes),
+      month_flow_count: monthFlowCount,
+      total_ingresos_ves: round2(totalIngresosVes),
+      total_egresos_ves: round2(totalEgresosVes),
+      balance_ves: round2(balanceVes),
+      balance_usd_equiv: todayBcv > 0 ? round2(balanceVes / todayBcv) : 0,
+    },
     charts: {
       daily,
       by_type: byType,
       cash_flow: cashFlowChart,
       diff_scatter: diffChart,
+      flow_by_type: flowByType,
     },
     top_suppliers: topSuppliers,
   };

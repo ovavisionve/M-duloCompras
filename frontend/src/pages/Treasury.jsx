@@ -435,7 +435,12 @@ export default function Treasury() {
       {activeTab === 'dashboard' && <>
         {dashLoading && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-500)' }}>Cargando dashboard...</div>}
         {dashData && <>
-          {/* KPIs */}
+          {/* ── SECTION: Compra de Divisas (USD) ── */}
+          <div style={{ marginBottom: '0.5rem' }}>
+            <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--gray-500)', letterSpacing: '0.05em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <DollarSign size={16} /> Compra de Divisas — {dashData.period}
+            </h3>
+          </div>
           <div className="stats-grid">
             <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
               <div className="label">Operaciones del Mes</div>
@@ -461,8 +466,43 @@ export default function Treasury() {
             </div>
           </div>
 
+          {/* ── SECTION: Posición Cambiaria (VES) ── */}
+          {dashData.position && <>
+            <div style={{ marginBottom: '0.5rem', marginTop: '0.5rem' }}>
+              <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--gray-500)', letterSpacing: '0.05em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Wallet size={16} /> Posición Cambiaria VES — {dashData.period}
+              </h3>
+            </div>
+            <div className="stats-grid">
+              <div className="stat-card" style={{ borderLeft: '4px solid #16a34a' }}>
+                <div className="label">Ingresos VES del Mes</div>
+                <div className="value" style={{ color: '#16a34a', fontSize: '1.1rem' }}>+{fmtNum(dashData.position.month_ingresos_ves)}</div>
+                <div className="sub">{dashData.position.month_flow_count} movimiento(s)</div>
+              </div>
+              <div className="stat-card" style={{ borderLeft: '4px solid #dc2626' }}>
+                <div className="label">Egresos VES del Mes</div>
+                <div className="value" style={{ color: '#dc2626', fontSize: '1.1rem' }}>-{fmtNum(dashData.position.month_egresos_ves)}</div>
+                <div className="sub">Salidas de bolívares</div>
+              </div>
+              <div className="stat-card" style={{ borderLeft: `4px solid ${dashData.position.month_neto_ves >= 0 ? '#16a34a' : '#dc2626'}` }}>
+                <div className="label">Neto VES del Mes</div>
+                <div className="value" style={{ color: dashData.position.month_neto_ves >= 0 ? '#16a34a' : '#dc2626', fontSize: '1.1rem' }}>
+                  {dashData.position.month_neto_ves >= 0 ? '+' : ''}{fmtNum(dashData.position.month_neto_ves)}
+                </div>
+                <div className="sub">Ingresos - Egresos</div>
+              </div>
+              <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+                <div className="label">Saldo Acumulado VES</div>
+                <div className="value" style={{ color: dashData.position.balance_ves >= 0 ? '#16a34a' : '#dc2626', fontSize: '1.1rem' }}>
+                  {fmtNum(dashData.position.balance_ves)}
+                </div>
+                <div className="sub">Equiv. {fmtNum(dashData.position.balance_usd_equiv)} USD @ BCV</div>
+              </div>
+            </div>
+          </>}
+
           {/* Rate cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '1rem', marginTop: '0.25rem' }}>
             <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Tasa BCV Hoy</div>
               <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--primary)' }}>{fmtRate(dashData.kpis.today_bcv_rate)}</div>
@@ -487,12 +527,12 @@ export default function Treasury() {
               <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: 'var(--danger)' }}>{fmtNum(dashData.kpis.spread_pct)}%</div>
             </div>
             <div className="card" style={{ padding: '0.75rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Saldo VES Posición</div>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--gray-500)', fontWeight: 600 }}>Saldo VES Total</div>
               <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700, color: dashData.kpis.balance_ves >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmtNum(dashData.kpis.balance_ves)}</div>
             </div>
           </div>
 
-          {/* Charts Row 1 */}
+          {/* Charts Row 1: Compras + Distribución tipo compra */}
           <div className="charts-grid">
             <div className="chart-card">
               <h3>Compras Diarias (VES)</h3>
@@ -508,7 +548,7 @@ export default function Treasury() {
             </div>
 
             <div className="chart-card">
-              <h3>Distribución por Tipo</h3>
+              <h3>Distribución por Tipo de Compra</h3>
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie data={dashData.charts.by_type} dataKey="ves" nameKey="type" cx="50%" cy="50%" outerRadius={95} innerRadius={45} paddingAngle={2}
@@ -521,24 +561,46 @@ export default function Treasury() {
             </div>
           </div>
 
-          {/* Charts Row 2 */}
+          {/* Charts Row 2: Flujo de Caja VES + Distribución flujos VES */}
           <div className="charts-grid">
             <div className="chart-card">
-              <h3>Flujo de Caja VES (Posición Cambiaria)</h3>
-              <ResponsiveContainer width="100%" height={260}>
+              <h3>Flujo de Caja VES — Ingresos vs Egresos</h3>
+              <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={dashData.charts.cash_flow}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="label" fontSize={11} />
                   <YAxis fontSize={11} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
                   <Tooltip formatter={(v) => fmtNum(v)} />
                   <Legend verticalAlign="top" height={30} />
-                  <Bar dataKey="ingresos" fill="#16a34a" name="Ingresos" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="egresos" fill="#dc2626" name="Egresos" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="ingresos" fill="#16a34a" name="Ingresos VES" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="egresos" fill="#dc2626" name="Egresos VES" radius={[3, 3, 0, 0]} />
                   <Line type="monotone" dataKey="saldo" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} name="Saldo Acum." />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
 
+            <div className="chart-card">
+              <h3>Distribución de Movimientos VES</h3>
+              {dashData.charts.flow_by_type?.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie data={dashData.charts.flow_by_type} dataKey="ves" nameKey="type" cx="50%" cy="50%" outerRadius={95} innerRadius={40} paddingAngle={2}
+                      label={({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
+                      {dashData.charts.flow_by_type.map((entry, i) => (
+                        <Cell key={i} fill={entry.flow_type === 'ingreso' ? ['#16a34a', '#22c55e', '#4ade80', '#86efac'][i % 4] : ['#dc2626', '#ef4444', '#f87171', '#fca5a5'][i % 4]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => fmtNum(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: 'var(--gray-400)', fontSize: '0.85rem' }}>Sin movimientos VES este mes</div>
+              )}
+            </div>
+          </div>
+
+          {/* Charts Row 3: Resultado cambiario + USD por día */}
+          <div className="charts-grid">
             <div className="chart-card">
               <h3>Resultado Cambiario por Operación (USD)</h3>
               <ResponsiveContainer width="100%" height={260}>
@@ -554,6 +616,19 @@ export default function Treasury() {
                     ))}
                   </Bar>
                 </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="chart-card">
+              <h3>USD Comprados por Día</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={dashData.charts.daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="label" fontSize={11} />
+                  <YAxis fontSize={11} />
+                  <Tooltip formatter={(v) => fmtNum(v)} />
+                  <Area type="monotone" dataKey="usd" stroke="#16a34a" fill="#bbf7d0" strokeWidth={2} name="USD" />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -577,24 +652,36 @@ export default function Treasury() {
               {!dashData.top_suppliers.length && <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem', padding: '1rem 0' }}>Sin operaciones en este período</div>}
             </div>
 
+            {/* Resumen bimoneda */}
             <div className="chart-card">
-              <h3>USD Comprados por Día</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={dashData.charts.daily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="label" fontSize={11} />
-                  <YAxis fontSize={11} />
-                  <Tooltip formatter={(v) => fmtNum(v)} />
-                  <Area type="monotone" dataKey="usd" stroke="#16a34a" fill="#bbf7d0" strokeWidth={2} name="USD" />
-                </AreaChart>
-              </ResponsiveContainer>
+              <h3>Resumen Bimoneda</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', padding: '0.5rem 0' }}>
+                <div style={{ background: '#f0fdf4', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#16a34a', fontWeight: 600, marginBottom: '0.25rem' }}>Posición VES</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.4rem', fontWeight: 700, color: '#16a34a' }}>{fmtNum(dashData.position?.balance_ves || dashData.kpis.balance_ves)}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)', marginTop: '0.25rem' }}>Total ingresos: {fmtNum(dashData.position?.total_ingresos_ves || 0)}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)' }}>Total egresos: {fmtNum(dashData.position?.total_egresos_ves || 0)}</div>
+                </div>
+                <div style={{ background: '#eff6ff', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#2563eb', fontWeight: 600, marginBottom: '0.25rem' }}>Posición USD</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.4rem', fontWeight: 700, color: '#2563eb' }}>{fmtNum(dashData.kpis.total_usd)}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)', marginTop: '0.25rem' }}>Equiv. VES @ BCV: {fmtNum(dashData.kpis.total_usd * dashData.kpis.today_bcv_rate)}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)' }}>Resultado: {dashData.kpis.diff_usd >= 0 ? '+' : ''}{fmtNum(dashData.kpis.diff_usd)} USD</div>
+                </div>
+              </div>
+              <div style={{ background: '#faf5ff', borderRadius: '8px', padding: '0.75rem', textAlign: 'center', marginTop: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#7c3aed', fontWeight: 600 }}>Patrimonio Total (equiv. USD @ BCV)</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.5rem', fontWeight: 700, color: '#7c3aed' }}>
+                  {fmtNum(dashData.kpis.total_usd + (dashData.position?.balance_usd_equiv || dashData.kpis.balance_usd))}
+                </div>
+              </div>
             </div>
           </div>
         </>}
-        {(!dashData || (dashData && dashData.kpis.operations_count === 0)) && !dashLoading && (
+        {(!dashData || (dashData && dashData.kpis.operations_count === 0 && (!dashData.position || dashData.position.month_flow_count === 0))) && !dashLoading && (
           <div style={{ padding: '2rem', textAlign: 'center' }}>
             <div style={{ color: 'var(--gray-400)', marginBottom: '1rem' }}>
-              {!dashData ? 'No hay datos disponibles.' : 'No hay operaciones este mes.'}
+              {!dashData ? 'No hay datos disponibles.' : 'No hay operaciones ni movimientos este mes.'}
             </div>
             <button
               className="btn btn-primary"
