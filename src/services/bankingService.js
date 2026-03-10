@@ -6,8 +6,8 @@ const auditService = require('./auditService');
 /**
  * Import bank statement movements
  */
-async function importMovements(bankAccountId, movements) {
-  const account = await db('bank_accounts').where({ id: bankAccountId }).first();
+async function importMovements(bankAccountId, movements, orgId) {
+  const account = await db('bank_accounts').where({ id: bankAccountId, organization_id: orgId }).first();
   if (!account) throw new AppError('Cuenta bancaria no encontrada', 404, 'NOT_FOUND');
 
   const inserted = [];
@@ -93,8 +93,8 @@ async function manualReconcile(movementId, paymentId, userId, ip) {
 /**
  * Get reconciliation report for a period
  */
-async function getReconciliationReport(bankAccountId, period) {
-  const account = await db('bank_accounts').where({ id: bankAccountId }).first();
+async function getReconciliationReport(bankAccountId, period, orgId) {
+  const account = await db('bank_accounts').where({ id: bankAccountId }).modify((q) => { if (orgId) q.where('organization_id', orgId); }).first();
   if (!account) throw new AppError('Cuenta bancaria no encontrada', 404, 'NOT_FOUND');
 
   const [month, year] = period.split('/');

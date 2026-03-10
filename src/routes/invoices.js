@@ -71,7 +71,7 @@ const { paginate } = require('../utils/helpers');
 // GET /invoices
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const result = await invoiceService.listInvoices(req.query);
+    const result = await invoiceService.listInvoices(req.query, req.user.organizationId);
     res.json({ success: true, ...paginate(result.data, result.total, result.page, result.limit) });
   } catch (err) { next(err); }
 });
@@ -131,7 +131,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const { period } = req.query;
     const db = require('../database/connection');
     const summary = await db('invoices')
-      .where({ fiscal_period: period })
+      .where({ fiscal_period: period, organization_id: req.user.organizationId })
       .whereIn('status', ['registrada', 'pago_parcial', 'pagada'])
       .select(
         db.raw('COUNT(*) as total_invoices'),
@@ -184,7 +184,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 // GET /invoices/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const invoice = await invoiceService.getInvoiceById(req.params.id);
+    const invoice = await invoiceService.getInvoiceById(req.params.id, req.user.organizationId);
     res.json({ success: true, data: invoice });
   } catch (err) { next(err); }
 });
@@ -412,7 +412,7 @@ router.get('/:id/withholdings', authenticate, async (req, res, next) => {
 // POST /invoices
 router.post('/', authenticate, authorize('admin', 'contador', 'operador'), async (req, res, next) => {
   try {
-    const invoice = await invoiceService.createInvoice(req.body, req.user.id, req.ip);
+    const invoice = await invoiceService.createInvoice(req.body, req.user.id, req.ip, req.user.organizationId);
     res.status(201).json({ success: true, data: invoice });
   } catch (err) { next(err); }
 });
@@ -474,7 +474,7 @@ router.post('/bulk', authenticate, authorize('admin', 'contador'), async (req, r
     const errors = [];
     for (let i = 0; i < req.body.invoices.length; i++) {
       try {
-        const invoice = await invoiceService.createInvoice(req.body.invoices[i], req.user.id, req.ip);
+        const invoice = await invoiceService.createInvoice(req.body.invoices[i], req.user.id, req.ip, req.user.organizationId);
         results.push({ index: i, success: true, id: invoice.id });
       } catch (err) {
         errors.push({ index: i, success: false, error: err.message });
@@ -534,7 +534,7 @@ router.post('/bulk', authenticate, authorize('admin', 'contador'), async (req, r
 // PUT /invoices/:id
 router.put('/:id', authenticate, authorize('admin', 'contador', 'operador'), async (req, res, next) => {
   try {
-    const invoice = await invoiceService.updateInvoice(req.params.id, req.body, req.user.id, req.ip);
+    const invoice = await invoiceService.updateInvoice(req.params.id, req.body, req.user.id, req.ip, req.user.organizationId);
     res.json({ success: true, data: invoice });
   } catch (err) { next(err); }
 });
@@ -597,7 +597,7 @@ router.put('/:id', authenticate, authorize('admin', 'contador', 'operador'), asy
 router.patch('/:id/status', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
     const { status } = req.body;
-    const invoice = await invoiceService.changeStatus(req.params.id, status, req.user.id, req.ip);
+    const invoice = await invoiceService.changeStatus(req.params.id, status, req.user.id, req.ip, req.user.organizationId);
     res.json({ success: true, data: invoice });
   } catch (err) { next(err); }
 });

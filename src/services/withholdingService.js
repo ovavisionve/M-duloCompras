@@ -9,11 +9,11 @@ const invoiceService = require('./invoiceService');
  * Generate next correlative voucher number
  * SENIAT format: AAAAMMSSSSSSSS (14 chars) but we use YYYY-TYPE-XXXXXXXX for readability
  */
-async function getNextVoucherNumber(type) {
+async function getNextVoucherNumber(type, orgId) {
   const key = type === 'ISLR' ? 'withholding_counter_islr' : 'withholding_counter_iva';
-  const config = await db('config').where({ key }).first();
+  const config = await db('config').where({ key, organization_id: orgId }).first();
   const counter = parseInt(config?.value || '0') + 1;
-  await db('config').where({ key }).update({ value: String(counter) });
+  await db('config').where({ key, organization_id: orgId }).update({ value: String(counter) });
   const year = new Date().getFullYear();
   return `${year}-${type}-${String(counter).padStart(8, '0')}`;
 }
@@ -21,7 +21,7 @@ async function getNextVoucherNumber(type) {
 /**
  * Create withholding linked to one or more invoices
  */
-async function createWithholding(data, userId, ip) {
+async function createWithholding(data, userId, ip, orgId) {
   if (!data.invoice_ids?.length) {
     throw new AppError('Debe vincular al menos una factura', 400, 'MISSING_INVOICES');
   }
@@ -37,7 +37,7 @@ async function createWithholding(data, userId, ip) {
     throw new AppError('Todas las facturas deben ser del mismo proveedor', 400, 'MIXED_SUPPLIERS');
   }
 
-  const voucherNumber = await getNextVoucherNumber(data.type);
+  const voucherNumber = await getNextVoucherNumber(data.type, orgId);
 
   // Calculate total base and withholding
   let totalBase = 0;
@@ -69,6 +69,7 @@ async function createWithholding(data, userId, ip) {
     amount_usd: amountUsd,
     exchange_rate: exchangeRate,
     created_by: userId,
+    organization_id: orgId,
   }).returning('*');
 
   // Insert withholding-invoice links
@@ -100,8 +101,8 @@ async function createWithholding(data, userId, ip) {
 /**
  * Void a withholding
  */
-async function voidWithholding(id, reason, userId, ip) {
-  const withholding = await db('withholdings').where({ id }).first();
+async function voidWithholding(id, reason, userId, ip, orgId) {
+  const withholding = await db('withholdings').where({ id, organization_id: orgId }).first();
   if (!withholding) throw new AppError('Retención no encontrada', 404, 'NOT_FOUND');
   if (withholding.status === 'anulada') throw new AppError('La retención ya está anulada', 400, 'ALREADY_VOIDED');
 
@@ -124,11 +125,12 @@ async function voidWithholding(id, reason, userId, ip) {
 /**
  * List withholdings
  */
-async function listWithholdings(filters = {}) {
+async function listWithholdings(filters = {}, orgId) {
   const query = db('withholdings')
     .join('suppliers', 'withholdings.supplier_id', 'suppliers.id')
     .select('withholdings.*', 'suppliers.rif as supplier_rif', 'suppliers.business_name as supplier_name');
 
+  if (orgId) query.where('withholdings.organization_id', orgId);
   if (filters.type) query.where('withholdings.type', filters.type);
   if (filters.supplier_id) query.where('withholdings.supplier_id', filters.supplier_id);
   if (filters.fiscal_period) query.where('withholdings.fiscal_period', filters.fiscal_period);
@@ -150,13 +152,14 @@ async function listWithholdings(filters = {}) {
 /**
  * Get withholding detail
  */
-async function getWithholdingById(id) {
-  const withholding = await db('withholdings')
+async function getWithholdingById(id, orgId) {
+  const query = db('withholdings')
     .join('suppliers', 'withholdings.supplier_id', 'suppliers.id')
     .select('withholdings.*', 'suppliers.rif as supplier_rif', 'suppliers.business_name as supplier_name',
       'suppliers.fiscal_address as supplier_address')
-    .where('withholdings.id', id)
-    .first();
+    .where('withholdings.id', id);
+  if (orgId) query.where('withholdings.organization_id', orgId);
+  const withholding = await query.first();
 
   if (!withholding) throw new AppError('Retención no encontrada', 404, 'NOT_FOUND');
 

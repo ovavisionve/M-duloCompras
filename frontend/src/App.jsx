@@ -80,7 +80,12 @@ function Sidebar() {
           <Settings size={18} /> Configuración
         </NavLink>
 
-        <div className="sidebar-section" style={{ marginTop: '2rem' }}>
+        {user.orgName && (
+          <div className="sidebar-section" style={{ marginTop: '1.5rem', fontSize: '0.7rem', opacity: 0.7 }}>
+            {user.orgName}
+          </div>
+        )}
+        <div className="sidebar-section" style={{ marginTop: user.orgName ? '0.3rem' : '2rem' }}>
           {user.fullName} ({user.role})
         </div>
         <button className="sidebar-link" onClick={logout}>

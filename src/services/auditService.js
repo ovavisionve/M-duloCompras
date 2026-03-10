@@ -3,7 +3,7 @@ const db = require('../database/connection');
 // Entity types hidden from the audit log UI (internal/treasury operations)
 const HIDDEN_ENTITY_TYPES = ['treasury_operation', 'treasury_cash_flow', 'treasury_ledger'];
 
-async function logAction(userId, entityType, entityId, action, oldValues, newValues, ipAddress) {
+async function logAction(userId, entityType, entityId, action, oldValues, newValues, ipAddress, orgId) {
   await db('audit_logs').insert({
     user_id: userId,
     entity_type: entityType,
@@ -12,16 +12,18 @@ async function logAction(userId, entityType, entityId, action, oldValues, newVal
     old_values: oldValues ? JSON.stringify(oldValues) : null,
     new_values: newValues ? JSON.stringify(newValues) : null,
     ip_address: ipAddress,
+    organization_id: orgId || null,
   });
 }
 
-async function getAuditLogs(filters = {}) {
+async function getAuditLogs(filters = {}, orgId) {
   const query = db('audit_logs')
     .leftJoin('users', 'audit_logs.user_id', 'users.id')
     .select('audit_logs.*', 'users.full_name as user_name', 'users.email as user_email')
     .whereNotIn('entity_type', HIDDEN_ENTITY_TYPES)
     .orderBy('audit_logs.created_at', 'desc');
 
+  if (orgId) query.where('audit_logs.organization_id', orgId);
   if (filters.entityType) query.where('entity_type', filters.entityType);
   if (filters.entityId) query.where('entity_id', filters.entityId);
   if (filters.userId) query.where('audit_logs.user_id', filters.userId);

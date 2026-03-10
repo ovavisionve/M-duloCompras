@@ -18,7 +18,7 @@ router.get('/accounts', authenticate, authorize('admin', 'tesorero'), async (req
 // GET /treasury/suppliers - Suppliers for dropdown
 router.get('/suppliers', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
-    const data = await db('suppliers').where({ is_active: true }).orderBy('business_name').select('id', 'business_name', 'rif');
+    const data = await db('suppliers').where({ is_active: true, organization_id: req.user.organizationId }).orderBy('business_name').select('id', 'business_name', 'rif');
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -48,7 +48,7 @@ router.get('/reports/operations/pdf', authenticate, authorize('admin', 'tesorero
   try {
     const PDFDocument = require('pdfkit');
     const result = await treasuryService.listOperations({ ...req.query, limit: 500 });
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || 'Comprar-IA';
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || 'Comprar-IA';
 
     const doc = new PDFDocument({ size: 'LEGAL', layout: 'landscape', margin: 30 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -158,7 +158,7 @@ router.get('/reports/cashflows/pdf', authenticate, authorize('admin', 'tesorero'
   try {
     const PDFDocument = require('pdfkit');
     const result = await treasuryService.listCashFlows({ ...req.query, limit: 500 });
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || 'Comprar-IA';
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || 'Comprar-IA';
 
     const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');

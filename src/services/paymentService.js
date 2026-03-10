@@ -8,7 +8,7 @@ const invoiceService = require('./invoiceService');
 /**
  * Register a new payment
  */
-async function createPayment(data, userId, ip) {
+async function createPayment(data, userId, ip, orgId) {
   if (!data.invoice_allocations?.length) {
     throw new AppError('Debe asignar el pago a al menos una factura', 400, 'MISSING_INVOICES');
   }
@@ -84,6 +84,7 @@ async function createPayment(data, userId, ip) {
       attachment_path: data.attachment_path || null,
       observations: data.observations || null,
       created_by: userId,
+      organization_id: orgId,
     }).returning('*');
 
     // Link payment to invoices
@@ -118,10 +119,10 @@ async function createPayment(data, userId, ip) {
 /**
  * Void a payment
  */
-async function voidPayment(id, reason, userId, ip) {
+async function voidPayment(id, reason, userId, ip, orgId) {
   if (!reason) throw new AppError('Debe indicar el motivo de anulación', 400, 'MISSING_REASON');
 
-  const payment = await db('payments').where({ id }).first();
+  const payment = await db('payments').where({ id, organization_id: orgId }).first();
   if (!payment) throw new AppError('Pago no encontrado', 404, 'NOT_FOUND');
   if (payment.status === 'anulado') throw new AppError('El pago ya está anulado', 400, 'ALREADY_VOIDED');
 
@@ -144,8 +145,9 @@ async function voidPayment(id, reason, userId, ip) {
 /**
  * List payments
  */
-async function listPayments(filters = {}) {
+async function listPayments(filters = {}, orgId) {
   const query = db('payments').select('payments.*');
+  if (orgId) query.where('payments.organization_id', orgId);
 
   if (filters.payment_method) query.where('payment_method', filters.payment_method);
   if (filters.currency) query.where('currency', filters.currency);
@@ -164,8 +166,10 @@ async function listPayments(filters = {}) {
 /**
  * Get payment detail
  */
-async function getPaymentById(id) {
-  const payment = await db('payments').where({ id }).first();
+async function getPaymentById(id, orgId) {
+  const query = db('payments').where({ id });
+  if (orgId) query.where('organization_id', orgId);
+  const payment = await query.first();
   if (!payment) throw new AppError('Pago no encontrado', 404, 'NOT_FOUND');
 
   payment.invoices = await db('payment_invoices')

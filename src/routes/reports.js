@@ -63,7 +63,7 @@ const { round2 } = require('../utils/helpers');
 // GET /reports/accounts-payable
 router.get('/accounts-payable', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getAccountsPayable(req.query);
+    const result = await reportService.getAccountsPayable(req.query, req.user.organizationId);
     res.json({ success: true, data: { invoices: result.invoices, summary: result.summary }, pagination: result.pagination });
   } catch (err) { next(err); }
 });
@@ -102,9 +102,9 @@ router.get('/accounts-payable/pdf', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getAccountsPayable(req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const result = await reportService.getAccountsPayable(req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LEGAL', layout: 'landscape', margin: 30 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -192,7 +192,7 @@ router.get('/accounts-payable/pdf', authenticate, async (req, res, next) => {
 router.get('/accounts-payable/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getAccountsPayable(req.query);
+    const result = await reportService.getAccountsPayable(req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Cuentas por Pagar');
@@ -291,7 +291,7 @@ router.get('/accounts-payable/excel', authenticate, async (req, res, next) => {
 // GET /reports/accounts-payable/csv
 router.get('/accounts-payable/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getAccountsPayable(req.query);
+    const result = await reportService.getAccountsPayable(req.query, req.user.organizationId);
     const headers = ['Nº Factura', 'Nº Control', 'RIF', 'Proveedor', 'Fecha Emisión', 'Moneda', 'Total VES', 'Total USD', 'Días', 'Antigüedad', 'Categoría', 'Centro Costo', 'Estado'];
     const rows = result.all_invoices.map((inv) => [
       inv.invoice_number, inv.control_number, inv.supplier_rif, `"${inv.supplier_name}"`,
@@ -357,7 +357,7 @@ router.get('/accounts-payable/csv', authenticate, async (req, res, next) => {
 // GET /reports/expenses-by-category
 router.get('/expenses-by-category', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getExpensesByCategory(req.query);
+    const result = await reportService.getExpensesByCategory(req.query, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -391,9 +391,9 @@ router.get('/expenses-by-category/pdf', authenticate, async (req, res, next) => 
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getExpensesByCategory(req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const result = await reportService.getExpensesByCategory(req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -480,7 +480,7 @@ router.get('/expenses-by-category/pdf', authenticate, async (req, res, next) => 
 router.get('/expenses-by-category/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getExpensesByCategory(req.query);
+    const result = await reportService.getExpensesByCategory(req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
 
@@ -554,7 +554,7 @@ router.get('/expenses-by-category/excel', authenticate, async (req, res, next) =
 // GET /reports/expenses-by-category/csv
 router.get('/expenses-by-category/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getExpensesByCategory(req.query);
+    const result = await reportService.getExpensesByCategory(req.query, req.user.organizationId);
     const headers = ['Categoría', 'Código', 'Facturas', 'Base Imponible', 'Exento', 'IVA', 'Total VES', 'Total USD'];
     const rows = result.by_category.map((c) => [
       `"${c.category}"`, c.category_code, c.invoice_count,
@@ -634,7 +634,7 @@ router.get('/expenses-by-category/csv', authenticate, async (req, res, next) => 
 // GET /reports/supplier-movements/:id
 router.get('/supplier-movements/:id', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getSupplierMovements(req.params.id, req.query);
+    const result = await reportService.getSupplierMovements(req.params.id, req.query, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -681,8 +681,8 @@ router.get('/supplier-movements/:id/pdf', authenticate, async (req, res, next) =
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getSupplierMovements(req.params.id, req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
+    const result = await reportService.getSupplierMovements(req.params.id, req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -778,7 +778,7 @@ router.get('/supplier-movements/:id/pdf', authenticate, async (req, res, next) =
 router.get('/supplier-movements/:id/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getSupplierMovements(req.params.id, req.query);
+    const result = await reportService.getSupplierMovements(req.params.id, req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
 
@@ -877,7 +877,7 @@ router.get('/supplier-movements/:id/excel', authenticate, async (req, res, next)
 // GET /reports/supplier-movements/:id/csv
 router.get('/supplier-movements/:id/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getSupplierMovements(req.params.id, req.query);
+    const result = await reportService.getSupplierMovements(req.params.id, req.query, req.user.organizationId);
     const lines = [`ESTADO DE CUENTA: ${result.supplier.business_name} (${result.supplier.rif})`];
     lines.push(`Facturado VES: ${result.summary.total_invoiced_ves},Pagado: ${result.summary.total_paid},Retenido: ${result.summary.total_withheld},Saldo: ${result.summary.balance_ves}`);
     lines.push('');
@@ -969,7 +969,7 @@ router.get('/supplier-movements/:id/csv', authenticate, async (req, res, next) =
 // GET /reports/exchange-differences
 router.get('/exchange-differences', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getExchangeDifferences(req.query);
+    const result = await reportService.getExchangeDifferences(req.query, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -1003,9 +1003,9 @@ router.get('/exchange-differences/pdf', authenticate, async (req, res, next) => 
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getExchangeDifferences(req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const result = await reportService.getExchangeDifferences(req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 30 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -1080,7 +1080,7 @@ router.get('/exchange-differences/pdf', authenticate, async (req, res, next) => 
 router.get('/exchange-differences/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getExchangeDifferences(req.query);
+    const result = await reportService.getExchangeDifferences(req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Diferencias Cambiarias');
@@ -1151,7 +1151,7 @@ router.get('/exchange-differences/excel', authenticate, async (req, res, next) =
 // GET /reports/exchange-differences/csv
 router.get('/exchange-differences/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getExchangeDifferences(req.query);
+    const result = await reportService.getExchangeDifferences(req.query, req.user.organizationId);
     const headers = ['Fecha', 'Referencia', 'Método', 'Moneda', 'Monto', 'Tasa Cambio', 'Diferencia Cambiaria', 'Facturas', 'Proveedor'];
     const rows = result.payments.map((p) => [
       new Date(p.payment_date).toLocaleDateString('es-VE'), p.reference_number, p.payment_method,
@@ -1212,7 +1212,7 @@ router.get('/exchange-differences/csv', authenticate, async (req, res, next) => 
 // GET /reports/withholdings-summary
 router.get('/withholdings-summary', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getWithholdingsSummary(req.query);
+    const result = await reportService.getWithholdingsSummary(req.query, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -1246,9 +1246,9 @@ router.get('/withholdings-summary/pdf', authenticate, async (req, res, next) => 
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getWithholdingsSummary(req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const result = await reportService.getWithholdingsSummary(req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -1341,7 +1341,7 @@ router.get('/withholdings-summary/pdf', authenticate, async (req, res, next) => 
 router.get('/withholdings-summary/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getWithholdingsSummary(req.query);
+    const result = await reportService.getWithholdingsSummary(req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Retenciones');
@@ -1408,7 +1408,7 @@ router.get('/withholdings-summary/excel', authenticate, async (req, res, next) =
 // GET /reports/withholdings-summary/csv
 router.get('/withholdings-summary/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getWithholdingsSummary(req.query);
+    const result = await reportService.getWithholdingsSummary(req.query, req.user.organizationId);
     const headers = ['Fecha', 'Tipo', 'Comprobante', 'RIF', 'Proveedor', 'Base Imponible', 'Tasa %', 'Retenido VES', 'Retenido USD'];
     const rows = result.withholdings.map((w) => [
       new Date(w.withholding_date).toLocaleDateString('es-VE'), w.type, w.voucher_number,
@@ -1476,7 +1476,7 @@ router.get('/withholdings-summary/csv', authenticate, async (req, res, next) => 
 // GET /reports/payment-summary
 router.get('/payment-summary', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getPaymentSummary(req.query);
+    const result = await reportService.getPaymentSummary(req.query, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -1510,9 +1510,9 @@ router.get('/payment-summary/pdf', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
     const db = require('../database/connection');
-    const result = await reportService.getPaymentSummary(req.query);
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const result = await reportService.getPaymentSummary(req.query, req.user.organizationId);
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: req.user.organizationId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 30 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -1594,7 +1594,7 @@ router.get('/payment-summary/pdf', authenticate, async (req, res, next) => {
 router.get('/payment-summary/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const result = await reportService.getPaymentSummary(req.query);
+    const result = await reportService.getPaymentSummary(req.query, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Pagos');
@@ -1653,7 +1653,7 @@ router.get('/payment-summary/excel', authenticate, async (req, res, next) => {
 // GET /reports/payment-summary/csv
 router.get('/payment-summary/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await reportService.getPaymentSummary(req.query);
+    const result = await reportService.getPaymentSummary(req.query, req.user.organizationId);
     const headers = ['Fecha', 'Referencia', 'Método', 'Moneda', 'Monto', 'Tasa Cambio', 'Dif. Cambiaria', 'ISLR Retenido', 'IVA Retenido', 'Observaciones'];
     const rows = result.payments.map((p) => [
       new Date(p.payment_date).toLocaleDateString('es-VE'), p.reference_number, p.payment_method,
@@ -1728,7 +1728,7 @@ router.get('/payment-summary/csv', authenticate, async (req, res, next) => {
 // GET /reports/audit-log
 router.get('/audit-log', authenticate, async (req, res, next) => {
   try {
-    const result = await auditService.getAuditLogs(req.query);
+    const result = await auditService.getAuditLogs(req.query, req.user.organizationId);
     res.json({ success: true, data: result.data, pagination: { total: result.total, page: result.page, limit: result.limit, pages: Math.ceil(result.total / result.limit) } });
   } catch (err) { next(err); }
 });
@@ -1770,7 +1770,7 @@ router.get('/audit-log', authenticate, async (req, res, next) => {
 // GET /reports/audit-log/excel
 router.get('/audit-log/excel', authenticate, async (req, res, next) => {
   try {
-    const result = await auditService.getAuditLogs({ ...req.query, limit: 5000 });
+    const result = await auditService.getAuditLogs({ ...req.query, limit: 5000 }, req.user.organizationId);
     const ExcelJS = require('exceljs');
 
     const workbook = new ExcelJS.Workbook();
@@ -1835,7 +1835,7 @@ router.get('/audit-log/excel', authenticate, async (req, res, next) => {
 // GET /reports/audit-log/csv
 router.get('/audit-log/csv', authenticate, async (req, res, next) => {
   try {
-    const result = await auditService.getAuditLogs({ ...req.query, limit: 5000 });
+    const result = await auditService.getAuditLogs({ ...req.query, limit: 5000 }, req.user.organizationId);
     const headers = ['Fecha', 'Usuario', 'Email', 'Entidad', 'ID Entidad', 'Acción', 'IP'];
     const rows = result.data.map((log) => [
       new Date(log.created_at).toLocaleString('es-VE'), `"${log.user_name || 'Sistema'}"`,

@@ -32,7 +32,7 @@ const auditService = require('../services/auditService');
 // GET /banking/bank-accounts
 router.get('/bank-accounts', authenticate, async (req, res, next) => {
   try {
-    const accounts = await db('bank_accounts').orderBy('bank_name');
+    const accounts = await db('bank_accounts').where('organization_id', req.user.organizationId).orderBy('bank_name');
     res.json({ success: true, data: accounts });
   } catch (err) { next(err); }
 });
@@ -106,9 +106,10 @@ router.post('/bank-accounts', authenticate, authorize('admin', 'tesorero'), asyn
       bank_name, account_type, account_number, currency,
       initial_balance: initial_balance || 0,
       current_balance: initial_balance || 0,
+      organization_id: req.user.organizationId,
     }).returning('*');
 
-    await auditService.logAction(req.user.id, 'bank_account', account.id, 'create', null, account, req.ip);
+    await auditService.logAction(req.user.id, 'bank_account', account.id, 'create', null, account, req.ip, req.user.organizationId);
     res.status(201).json({ success: true, data: account });
   } catch (err) { next(err); }
 });
@@ -169,7 +170,7 @@ router.post('/bank-accounts/:id/statements', authenticate, authorize('admin', 't
   try {
     const { movements } = req.body;
     if (!movements?.length) throw new AppError('Debe enviar al menos un movimiento', 400);
-    const result = await bankingService.importMovements(req.params.id, movements);
+    const result = await bankingService.importMovements(req.params.id, movements, req.user.organizationId);
     res.status(201).json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -241,6 +242,9 @@ router.post('/bank-accounts/:id/statements', authenticate, authorize('admin', 't
 router.get('/bank-accounts/:id/movements', authenticate, async (req, res, next) => {
   try {
     const { from_date, to_date, status, page = 1, limit = 50 } = req.query;
+    // Verify account belongs to org
+    const account = await db('bank_accounts').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
+    if (!account) return res.status(404).json({ success: false, error: { message: 'Cuenta no encontrada' } });
     const query = db('bank_movements')
       .leftJoin('payments', 'bank_movements.matched_payment_id', 'payments.id')
       .where('bank_movements.bank_account_id', req.params.id)
@@ -412,7 +416,7 @@ router.get('/reconciliation/report', authenticate, async (req, res, next) => {
   try {
     const { bank_account_id, period } = req.query;
     if (!bank_account_id || !period) throw new AppError('Cuenta bancaria y período requeridos', 400);
-    const report = await bankingService.getReconciliationReport(bank_account_id, period);
+    const report = await bankingService.getReconciliationReport(bank_account_id, period, req.user.organizationId);
     res.json({ success: true, data: report });
   } catch (err) { next(err); }
 });
@@ -455,7 +459,7 @@ router.get('/reconciliation/report', authenticate, async (req, res, next) => {
 // GET /banking/api-config
 router.get('/api-config', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
-    const configs = await db('config').whereIn('key', [
+    const configs = await db('config').where('organization_id', req.user.organizationId).whereIn('key', [
       'bank_api_provider', 'bank_api_url', 'bank_api_key', 'bank_api_enabled',
     ]);
     const data = {};
@@ -519,17 +523,18 @@ router.put('/api-config', authenticate, authorize('admin'), async (req, res, nex
     const { bank_api_provider, bank_api_url, bank_api_key, bank_api_enabled } = req.body;
     const allowedKeys = { bank_api_provider, bank_api_url, bank_api_key, bank_api_enabled: String(bank_api_enabled ?? 'false') };
 
+    const orgId = req.user.organizationId;
     for (const [key, value] of Object.entries(allowedKeys)) {
       if (value === undefined) continue;
-      const existing = await db('config').where({ key }).first();
+      const existing = await db('config').where({ key, organization_id: orgId }).first();
       if (existing) {
-        await db('config').where({ key }).update({ value: String(value), updated_at: new Date() });
+        await db('config').where({ key, organization_id: orgId }).update({ value: String(value), updated_at: new Date() });
       } else {
-        await db('config').insert({ key, value: String(value), description: `Configuración API bancaria: ${key}` });
+        await db('config').insert({ key, value: String(value), description: `Configuración API bancaria: ${key}`, organization_id: orgId });
       }
     }
 
-    await auditService.logAction(req.user.id, 'config', null, 'update', null, { bank_api_provider }, req.ip);
+    await auditService.logAction(req.user.id, 'config', null, 'update', null, { bank_api_provider }, req.ip, orgId);
     res.json({ success: true, message: 'Configuración de API bancaria actualizada' });
   } catch (err) { next(err); }
 });
@@ -573,14 +578,14 @@ router.put('/api-config', authenticate, authorize('admin'), async (req, res, nex
 // POST /banking/sync - Fetch movements from bank API
 router.post('/sync', authenticate, authorize('admin', 'tesorero', 'contador'), async (req, res, next) => {
   try {
-    const enabled = await db('config').where({ key: 'bank_api_enabled' }).first();
+    const enabled = await db('config').where({ key: 'bank_api_enabled', organization_id: req.user.organizationId }).first();
     if (enabled?.value !== 'true') {
       throw new AppError('La API bancaria no está habilitada. Configure la conexión en Configuración > API Bancaria.', 400, 'BANK_API_NOT_CONFIGURED');
     }
 
-    const provider = (await db('config').where({ key: 'bank_api_provider' }).first())?.value;
-    const apiUrl = (await db('config').where({ key: 'bank_api_url' }).first())?.value;
-    const apiKey = (await db('config').where({ key: 'bank_api_key' }).first())?.value;
+    const provider = (await db('config').where({ key: 'bank_api_provider', organization_id: req.user.organizationId }).first())?.value;
+    const apiUrl = (await db('config').where({ key: 'bank_api_url', organization_id: req.user.organizationId }).first())?.value;
+    const apiKey = (await db('config').where({ key: 'bank_api_key', organization_id: req.user.organizationId }).first())?.value;
 
     if (!provider || !apiUrl || !apiKey) {
       throw new AppError('Configuración de API bancaria incompleta. Verifique proveedor, URL y clave API.', 400, 'BANK_API_INCOMPLETE');

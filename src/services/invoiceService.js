@@ -33,10 +33,10 @@ function calculateTotals(data) {
 /**
  * Create a new invoice
  */
-async function createInvoice(data, userId, ip) {
-  // Validate no duplicate
+async function createInvoice(data, userId, ip, orgId) {
+  // Validate no duplicate within org
   const existing = await db('invoices')
-    .where({ supplier_id: data.supplier_id, invoice_number: data.invoice_number })
+    .where({ supplier_id: data.supplier_id, invoice_number: data.invoice_number, organization_id: orgId })
     .andWhere(function () {
       if (data.control_number) {
         this.where('control_number', data.control_number);
@@ -68,7 +68,9 @@ async function createInvoice(data, userId, ip) {
     ...data,
     ...totals,
     status: data.status || 'borrador',
+    organization_id: orgId,
   };
+  delete invoiceData.items;
 
   const [invoice] = await db('invoices').insert(invoiceData).returning('*');
 
@@ -94,8 +96,8 @@ async function createInvoice(data, userId, ip) {
 /**
  * Update an existing invoice
  */
-async function updateInvoice(id, data, userId, ip) {
-  const invoice = await db('invoices').where({ id }).first();
+async function updateInvoice(id, data, userId, ip, orgId) {
+  const invoice = await db('invoices').where({ id, organization_id: orgId }).first();
   if (!invoice) throw new AppError('Factura no encontrada', 404, 'NOT_FOUND');
   if (['pagada', 'anulada'].includes(invoice.status)) {
     throw new AppError('No se puede editar una factura pagada o anulada', 400, 'INVOICE_LOCKED');
@@ -113,8 +115,8 @@ async function updateInvoice(id, data, userId, ip) {
 /**
  * Change invoice status
  */
-async function changeStatus(id, newStatus, userId, ip) {
-  const invoice = await db('invoices').where({ id }).first();
+async function changeStatus(id, newStatus, userId, ip, orgId) {
+  const invoice = await db('invoices').where({ id, organization_id: orgId }).first();
   if (!invoice) throw new AppError('Factura no encontrada', 404, 'NOT_FOUND');
 
   const oldStatus = invoice.status;
@@ -139,8 +141,8 @@ async function changeStatus(id, newStatus, userId, ip) {
 /**
  * Get invoice with relations
  */
-async function getInvoiceById(id) {
-  const invoice = await db('invoices')
+async function getInvoiceById(id, orgId) {
+  const query = db('invoices')
     .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
     .leftJoin('expense_categories', 'invoices.expense_category_id', 'expense_categories.id')
     .leftJoin('cost_centers', 'invoices.cost_center_id', 'cost_centers.id')
@@ -152,8 +154,9 @@ async function getInvoiceById(id) {
       'expense_categories.name as category_name',
       'cost_centers.name as cost_center_name'
     )
-    .where('invoices.id', id)
-    .first();
+    .where('invoices.id', id);
+  if (orgId) query.where('invoices.organization_id', orgId);
+  const invoice = await query.first();
 
   if (!invoice) throw new AppError('Factura no encontrada', 404, 'NOT_FOUND');
 
@@ -173,7 +176,7 @@ async function getInvoiceById(id) {
 /**
  * List invoices with filters and pagination
  */
-async function listInvoices(filters = {}) {
+async function listInvoices(filters = {}, orgId) {
   const query = db('invoices')
     .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
     .select(
@@ -182,6 +185,7 @@ async function listInvoices(filters = {}) {
       'suppliers.business_name as supplier_name'
     );
 
+  if (orgId) query.where('invoices.organization_id', orgId);
   if (filters.supplier_id) query.where('invoices.supplier_id', filters.supplier_id);
   if (filters.status) query.where('invoices.status', filters.status);
   if (filters.document_type) query.where('invoices.document_type', filters.document_type);

@@ -40,7 +40,7 @@ const auditService = require('../services/auditService');
 router.get('/expense-categories', authenticate, async (req, res, next) => {
   try {
     const showAll = req.query.all === 'true';
-    const categories = await db('expense_categories').modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
+    const categories = await db('expense_categories').where('organization_id', req.user.organizationId).modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
     res.json({ success: true, data: categories });
   } catch (err) { next(err); }
 });
@@ -93,9 +93,10 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
   try {
     const { name, code, description } = req.body;
     if (!name || !code) throw new AppError('Nombre y código requeridos', 400);
-    const exists = await db('expense_categories').where({ name }).orWhere({ code }).first();
+    const orgId = req.user.organizationId;
+    const exists = await db('expense_categories').where('organization_id', orgId).where(function() { this.where({ name }).orWhere({ code }); }).first();
     if (exists) throw new AppError('Ya existe una categoría con ese nombre o código', 409);
-    const [cat] = await db('expense_categories').insert({ name, code, description }).returning('*');
+    const [cat] = await db('expense_categories').insert({ name, code, description, organization_id: orgId }).returning('*');
     res.status(201).json({ success: true, data: cat });
   } catch (err) { next(err); }
 });
@@ -103,7 +104,7 @@ router.post('/expense-categories', authenticate, authorize('admin', 'contador'),
 // PATCH /config/expense-categories/:id/toggle - Toggle active status
 router.patch('/expense-categories/:id/toggle', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const cat = await db('expense_categories').where({ id: req.params.id }).first();
+    const cat = await db('expense_categories').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!cat) throw new AppError('Categoría no encontrada', 404);
     const [updated] = await db('expense_categories').where({ id: req.params.id })
       .update({ is_active: !cat.is_active, updated_at: new Date() }).returning('*');
@@ -114,7 +115,7 @@ router.patch('/expense-categories/:id/toggle', authenticate, authorize('admin', 
 // DELETE /config/expense-categories/:id - Soft delete (set inactive)
 router.delete('/expense-categories/:id', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const cat = await db('expense_categories').where({ id: req.params.id }).first();
+    const cat = await db('expense_categories').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!cat) throw new AppError('Categoría no encontrada', 404);
     // Check if used by any invoice
     const used = await db('invoices').where({ expense_category_id: req.params.id }).first();
@@ -164,7 +165,7 @@ router.delete('/expense-categories/:id', authenticate, authorize('admin', 'conta
 router.get('/cost-centers', authenticate, async (req, res, next) => {
   try {
     const showAll = req.query.all === 'true';
-    const centers = await db('cost_centers').modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
+    const centers = await db('cost_centers').where('organization_id', req.user.organizationId).modify((q) => { if (!showAll) q.where({ is_active: true }); }).orderBy('name');
     res.json({ success: true, data: centers });
   } catch (err) { next(err); }
 });
@@ -217,9 +218,10 @@ router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async
   try {
     const { name, code, description } = req.body;
     if (!name || !code) throw new AppError('Nombre y código requeridos', 400);
-    const exists = await db('cost_centers').where({ name }).orWhere({ code }).first();
+    const orgId = req.user.organizationId;
+    const exists = await db('cost_centers').where('organization_id', orgId).where(function() { this.where({ name }).orWhere({ code }); }).first();
     if (exists) throw new AppError('Ya existe un centro de costo con ese nombre o código', 409);
-    const [center] = await db('cost_centers').insert({ name, code, description }).returning('*');
+    const [center] = await db('cost_centers').insert({ name, code, description, organization_id: orgId }).returning('*');
     res.status(201).json({ success: true, data: center });
   } catch (err) { next(err); }
 });
@@ -227,7 +229,7 @@ router.post('/cost-centers', authenticate, authorize('admin', 'contador'), async
 // PATCH /config/cost-centers/:id/toggle - Toggle active status
 router.patch('/cost-centers/:id/toggle', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const cc = await db('cost_centers').where({ id: req.params.id }).first();
+    const cc = await db('cost_centers').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!cc) throw new AppError('Centro de costo no encontrado', 404);
     const [updated] = await db('cost_centers').where({ id: req.params.id })
       .update({ is_active: !cc.is_active, updated_at: new Date() }).returning('*');
@@ -238,7 +240,7 @@ router.patch('/cost-centers/:id/toggle', authenticate, authorize('admin', 'conta
 // DELETE /config/cost-centers/:id - Soft delete (set inactive)
 router.delete('/cost-centers/:id', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const cc = await db('cost_centers').where({ id: req.params.id }).first();
+    const cc = await db('cost_centers').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!cc) throw new AppError('Centro de costo no encontrado', 404);
     const used = await db('invoices').where({ cost_center_id: req.params.id }).first();
     if (used) {
@@ -278,7 +280,7 @@ router.delete('/cost-centers/:id', authenticate, authorize('admin', 'contador'),
  */
 router.get('/tax-unit', authenticate, async (req, res, next) => {
   try {
-    const config = await db('config').where({ key: 'tax_unit_value' }).first();
+    const config = await db('config').where({ key: 'tax_unit_value', organization_id: req.user.organizationId }).first();
     res.json({ success: true, data: { value: parseFloat(config?.value || '0') } });
   } catch (err) { next(err); }
 });
@@ -330,9 +332,10 @@ router.put('/tax-unit', authenticate, authorize('admin', 'contador'), async (req
   try {
     const { value } = req.body;
     if (!value) throw new AppError('Valor requerido', 400);
-    const old = await db('config').where({ key: 'tax_unit_value' }).first();
-    await db('config').where({ key: 'tax_unit_value' }).update({ value: String(value), updated_at: new Date() });
-    await auditService.logAction(req.user.id, 'config', old.id, 'update', { value: old.value }, { value: String(value) }, req.ip);
+    const orgId = req.user.organizationId;
+    const old = await db('config').where({ key: 'tax_unit_value', organization_id: orgId }).first();
+    await db('config').where({ key: 'tax_unit_value', organization_id: orgId }).update({ value: String(value), updated_at: new Date() });
+    await auditService.logAction(req.user.id, 'config', old.id, 'update', { value: old.value }, { value: String(value) }, req.ip, orgId);
     res.json({ success: true, data: { value: parseFloat(value) } });
   } catch (err) { next(err); }
 });
@@ -361,7 +364,7 @@ router.put('/tax-unit', authenticate, authorize('admin', 'contador'), async (req
  */
 router.get('/company', authenticate, async (req, res, next) => {
   try {
-    const configs = await db('config').whereIn('key', ['company_rif', 'company_name', 'company_address', 'is_special_taxpayer']);
+    const configs = await db('config').where('organization_id', req.user.organizationId).whereIn('key', ['company_rif', 'company_name', 'company_address', 'is_special_taxpayer']);
     const data = {};
     configs.forEach((c) => { data[c.key] = c.value; });
     res.json({ success: true, data });
@@ -399,9 +402,10 @@ router.get('/company', authenticate, async (req, res, next) => {
 router.put('/company', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const allowedKeys = ['company_rif', 'company_name', 'company_address', 'is_special_taxpayer'];
+    const orgId = req.user.organizationId;
     for (const [key, value] of Object.entries(req.body)) {
       if (allowedKeys.includes(key)) {
-        await db('config').where({ key }).update({ value: String(value), updated_at: new Date() });
+        await db('config').where({ key, organization_id: orgId }).update({ value: String(value), updated_at: new Date() });
       }
     }
     res.json({ success: true, message: 'Configuración actualizada' });
@@ -507,7 +511,7 @@ router.put('/withholding-rules/:id', authenticate, authorize('admin', 'contador'
     updates.updated_at = new Date();
 
     const [updated] = await db('withholding_rules').where({ id: req.params.id }).update(updates).returning('*');
-    await auditService.logAction(req.user.id, 'withholding_rule', req.params.id, 'update', rule, updated, req.ip);
+    await auditService.logAction(req.user.id, 'withholding_rule', req.params.id, 'update', rule, updated, req.ip, req.user.organizationId);
     res.json({ success: true, data: updated });
   } catch (err) { next(err); }
 });

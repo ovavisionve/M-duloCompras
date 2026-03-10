@@ -4,11 +4,12 @@ const { round2 } = require('../utils/helpers');
 /**
  * Accounts Payable Report - with full filtering
  */
-async function getAccountsPayable(filters = {}) {
+async function getAccountsPayable(filters = {}, orgId) {
   const query = db('invoices')
     .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
     .leftJoin('expense_categories', 'invoices.expense_category_id', 'expense_categories.id')
     .leftJoin('cost_centers', 'invoices.cost_center_id', 'cost_centers.id')
+    .modify((q) => { if (orgId) q.where('invoices.organization_id', orgId); })
     .whereIn('invoices.status', ['registrada', 'pago_parcial'])
     .select(
       'invoices.*',
@@ -94,11 +95,12 @@ async function getAccountsPayable(filters = {}) {
 /**
  * Expenses by Category Report - with full filtering
  */
-async function getExpensesByCategory(filters = {}) {
+async function getExpensesByCategory(filters = {}, orgId) {
   const query = db('invoices')
     .leftJoin('expense_categories', 'invoices.expense_category_id', 'expense_categories.id')
     .leftJoin('cost_centers', 'invoices.cost_center_id', 'cost_centers.id')
     .leftJoin('suppliers', 'invoices.supplier_id', 'suppliers.id')
+    .modify((q) => { if (orgId) q.where('invoices.organization_id', orgId); })
     .whereIn('invoices.status', ['registrada', 'pago_parcial', 'pagada']);
 
   // Filters
@@ -164,9 +166,11 @@ async function getExpensesByCategory(filters = {}) {
 /**
  * Supplier Movements Report - with full filtering
  */
-async function getSupplierMovements(supplierId, filters = {}) {
+async function getSupplierMovements(supplierId, filters = {}, orgId) {
   // Get supplier info
-  const supplier = await db('suppliers').where({ id: supplierId }).first();
+  const query = db('suppliers').where({ id: supplierId });
+  if (orgId) query.where('organization_id', orgId);
+  const supplier = await query.first();
   if (!supplier) {
     const { AppError } = require('../middleware/errorHandler');
     throw new AppError('Proveedor no encontrado', 404, 'NOT_FOUND');
@@ -227,11 +231,12 @@ async function getSupplierMovements(supplierId, filters = {}) {
 /**
  * Exchange Differences Report - with full filtering (fixed crash)
  */
-async function getExchangeDifferences(filters = {}) {
+async function getExchangeDifferences(filters = {}, orgId) {
   const query = db('payments')
     .leftJoin('payment_invoices', 'payments.id', 'payment_invoices.payment_id')
     .leftJoin('invoices', 'payment_invoices.invoice_id', 'invoices.id')
     .leftJoin('suppliers', 'invoices.supplier_id', 'suppliers.id')
+    .modify((q) => { if (orgId) q.where('payments.organization_id', orgId); })
     .where('payments.status', 'activo')
     .select(
       'payments.*',
@@ -281,9 +286,10 @@ async function getExchangeDifferences(filters = {}) {
 /**
  * Withholdings Summary Report
  */
-async function getWithholdingsSummary(filters = {}) {
+async function getWithholdingsSummary(filters = {}, orgId) {
   const query = db('withholdings')
     .join('suppliers', 'withholdings.supplier_id', 'suppliers.id')
+    .modify((q) => { if (orgId) q.where('withholdings.organization_id', orgId); })
     .where('withholdings.status', 'activa')
     .select(
       'withholdings.*',
@@ -340,8 +346,9 @@ async function getWithholdingsSummary(filters = {}) {
 /**
  * Payment Summary Report
  */
-async function getPaymentSummary(filters = {}) {
+async function getPaymentSummary(filters = {}, orgId) {
   const query = db('payments')
+    .modify((q) => { if (orgId) q.where('payments.organization_id', orgId); })
     .where('payments.status', 'activo');
 
   if (filters.period) {

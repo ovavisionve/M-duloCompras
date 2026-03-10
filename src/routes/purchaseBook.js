@@ -52,7 +52,7 @@ router.get('/', authenticate, async (req, res, next) => {
   try {
     const { period } = req.query;
     if (!period) return res.status(400).json({ success: false, error: { message: 'Período requerido (MM/YYYY)' } });
-    const book = await purchaseBookService.getPurchaseBook(period);
+    const book = await purchaseBookService.getPurchaseBook(period, req.user.organizationId);
     res.json({ success: true, data: book });
   } catch (err) { next(err); }
 });
@@ -96,7 +96,7 @@ router.get('/', authenticate, async (req, res, next) => {
 // GET /purchase-book/validate?period=MM/YYYY
 router.get('/validate', authenticate, async (req, res, next) => {
   try {
-    const result = await purchaseBookService.validateBook(req.query.period);
+    const result = await purchaseBookService.validateBook(req.query.period, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -137,11 +137,12 @@ router.get('/validate', authenticate, async (req, res, next) => {
 router.get('/pdf', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
-    const book = await purchaseBookService.getPurchaseBook(req.query.period);
+    const orgId = req.user.organizationId;
+    const book = await purchaseBookService.getPurchaseBook(req.query.period, orgId);
     const db = require('../database/connection');
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
-    const companyAddress = (await db('config').where({ key: 'company_address' }).first())?.value || '';
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: orgId }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: orgId }).first())?.value || '';
+    const companyAddress = (await db('config').where({ key: 'company_address', organization_id: orgId }).first())?.value || '';
 
     const doc = new PDFDocument({ size: 'LEGAL', layout: 'landscape', margin: 25 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -314,7 +315,7 @@ router.get('/pdf', authenticate, async (req, res, next) => {
 router.get('/excel', authenticate, async (req, res, next) => {
   try {
     const ExcelJS = require('exceljs');
-    const book = await purchaseBookService.getPurchaseBook(req.query.period);
+    const book = await purchaseBookService.getPurchaseBook(req.query.period, req.user.organizationId);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Libro de Compras');
@@ -402,9 +403,9 @@ router.get('/excel', authenticate, async (req, res, next) => {
 // GET /purchase-book/seniat?period=MM/YYYY (TXT format)
 router.get('/seniat', authenticate, async (req, res, next) => {
   try {
-    const book = await purchaseBookService.getPurchaseBook(req.query.period);
+    const book = await purchaseBookService.getPurchaseBook(req.query.period, req.user.organizationId);
     const db = require('../database/connection');
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: req.user.organizationId }).first())?.value || '';
 
     const lines = book.entries.map((e) => {
       return [
@@ -470,7 +471,7 @@ router.get('/seniat', authenticate, async (req, res, next) => {
 // POST /purchase-book/close?period=MM/YYYY
 router.post('/close', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const result = await purchaseBookService.closePeriod(req.query.period, req.user.id, req.ip);
+    const result = await purchaseBookService.closePeriod(req.query.period, req.user.id, req.ip, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

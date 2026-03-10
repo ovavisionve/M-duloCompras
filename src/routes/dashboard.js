@@ -116,9 +116,12 @@ router.get('/', authenticate, async (req, res, next) => {
     const startDate = `${currentYear}-${currentMonth}-01`;
     const endDate = new Date(currentYear, now.getMonth() + 1, 0).toISOString().split('T')[0];
 
+    const orgId = req.user.organizationId;
+
     // Monthly totals
     const monthlyTotals = await db('invoices')
       .where('fiscal_period', currentPeriod)
+      .where('organization_id', orgId)
       .whereIn('status', ['registrada', 'pago_parcial', 'pagada'])
       .select(
         db.raw('COALESCE(SUM(total_ves), 0) as total_ves'),
@@ -129,6 +132,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     // Pending invoices
     const pending = await db('invoices')
+      .where('organization_id', orgId)
       .whereIn('status', ['registrada', 'pago_parcial'])
       .select(
         db.raw('COALESCE(SUM(total_ves), 0) as total_ves'),
@@ -140,6 +144,7 @@ router.get('/', authenticate, async (req, res, next) => {
     // Overdue invoices (>30 days pending)
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
     const overdue = await db('invoices')
+      .where('organization_id', orgId)
       .whereIn('status', ['registrada', 'pago_parcial'])
       .where('emission_date', '<', thirtyDaysAgo)
       .select(db.raw('COUNT(*) as count'), db.raw('COALESCE(SUM(total_ves), 0) as total_ves'))
@@ -149,6 +154,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const topSuppliers = await db('invoices')
       .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
       .where('invoices.fiscal_period', currentPeriod)
+      .where('invoices.organization_id', orgId)
       .whereIn('invoices.status', ['registrada', 'pago_parcial', 'pagada'])
       .groupBy('suppliers.id', 'suppliers.business_name')
       .select('suppliers.business_name', db.raw('SUM(invoices.total_ves) as total_ves'))
@@ -159,6 +165,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const byCategory = await db('invoices')
       .leftJoin('expense_categories', 'invoices.expense_category_id', 'expense_categories.id')
       .where('invoices.fiscal_period', currentPeriod)
+      .where('invoices.organization_id', orgId)
       .whereIn('invoices.status', ['registrada', 'pago_parcial', 'pagada'])
       .groupBy('expense_categories.name')
       .select(
@@ -169,6 +176,7 @@ router.get('/', authenticate, async (req, res, next) => {
     // Monthly evolution (last 6 months)
     const sixMonthsAgo = new Date(currentYear, now.getMonth() - 5, 1);
     const monthlyEvolution = await db('invoices')
+      .where('organization_id', orgId)
       .whereIn('status', ['registrada', 'pago_parcial', 'pagada'])
       .where('emission_date', '>=', sixMonthsAgo.toISOString().split('T')[0])
       .groupBy('fiscal_period')
@@ -177,7 +185,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     // Withholdings of the period
     const withholdingsSummary = await db('withholdings')
-      .where({ fiscal_period: currentPeriod, status: 'activa' })
+      .where({ fiscal_period: currentPeriod, status: 'activa', organization_id: orgId })
       .select(
         db.raw('COUNT(*) as count'),
         db.raw('COALESCE(SUM(amount_ves), 0) as total_ves')
@@ -186,7 +194,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     // Bank balances
     const bankBalances = await db('bank_accounts')
-      .where({ is_active: true })
+      .where({ is_active: true, organization_id: orgId })
       .select('bank_name', 'account_number', 'currency', 'current_balance');
 
     // Today's exchange rate (non-blocking)

@@ -65,7 +65,7 @@ const auditService = require('../services/auditService');
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const { search, taxpayer_type, is_active, page = 1, limit = 20 } = req.query;
-    const query = db('suppliers');
+    const query = db('suppliers').where('organization_id', req.user.organizationId);
 
     if (search) {
       query.where(function () {
@@ -122,7 +122,7 @@ router.get('/search', authenticate, async (req, res, next) => {
   try {
     const { rif } = req.query;
     if (!rif) throw new AppError('RIF requerido', 400);
-    const supplier = await db('suppliers').where('rif', 'ilike', `%${rif}%`).first();
+    const supplier = await db('suppliers').where('organization_id', req.user.organizationId).where('rif', 'ilike', `%${rif}%`).first();
     res.json({ success: true, data: supplier || null });
   } catch (err) { next(err); }
 });
@@ -164,7 +164,7 @@ router.get('/search', authenticate, async (req, res, next) => {
  */
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const supplier = await db('suppliers').where({ id: req.params.id }).first();
+    const supplier = await db('suppliers').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!supplier) throw new AppError('Proveedor no encontrado', 404);
     res.json({ success: true, data: supplier });
   } catch (err) { next(err); }
@@ -218,7 +218,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.get('/:id/invoices', authenticate, async (req, res, next) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const query = db('invoices').where({ supplier_id: req.params.id });
+    const query = db('invoices').where({ supplier_id: req.params.id, organization_id: req.user.organizationId });
     const [{ count }] = await query.clone().clear('select').count('* as count');
     const data = await query.orderBy('emission_date', 'desc').limit(limit).offset((page - 1) * limit);
     res.json({ success: true, ...paginate(data, parseInt(count), page, limit) });
@@ -274,13 +274,14 @@ router.post('/', authenticate, authorize('admin', 'contador', 'operador'), [
   try {
     const { rif, business_name, fiscal_address, phone, email, taxpayer_type, is_retention_agent } = req.body;
 
-    const existing = await db('suppliers').where({ rif }).first();
+    const existing = await db('suppliers').where({ rif, organization_id: req.user.organizationId }).first();
     if (existing) throw new AppError('Ya existe un proveedor con este RIF', 409);
 
     const [supplier] = await db('suppliers').insert({
       rif, business_name, fiscal_address, phone, email,
       taxpayer_type: taxpayer_type || 'ordinario',
       is_retention_agent: is_retention_agent || false,
+      organization_id: req.user.organizationId,
     }).returning('*');
 
     await auditService.logAction(req.user.id, 'supplier', supplier.id, 'create', null, supplier, req.ip);
@@ -331,7 +332,7 @@ router.post('/', authenticate, authorize('admin', 'contador', 'operador'), [
  */
 router.put('/:id', authenticate, authorize('admin', 'contador', 'operador'), async (req, res, next) => {
   try {
-    const supplier = await db('suppliers').where({ id: req.params.id }).first();
+    const supplier = await db('suppliers').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!supplier) throw new AppError('Proveedor no encontrado', 404);
 
     const { business_name, fiscal_address, phone, email, taxpayer_type, is_retention_agent } = req.body;
@@ -388,7 +389,7 @@ router.put('/:id', authenticate, authorize('admin', 'contador', 'operador'), asy
  */
 router.delete('/:id', authenticate, authorize('admin'), async (req, res, next) => {
   try {
-    const supplier = await db('suppliers').where({ id: req.params.id }).first();
+    const supplier = await db('suppliers').where({ id: req.params.id, organization_id: req.user.organizationId }).first();
     if (!supplier) throw new AppError('Proveedor no encontrado', 404);
 
     await db('suppliers').where({ id: req.params.id }).update({ is_active: false, updated_at: new Date() });

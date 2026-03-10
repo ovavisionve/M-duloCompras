@@ -44,7 +44,11 @@ router.post('/login', authRateLimiter, [
   try {
     const { email, password } = req.body;
 
-    const user = await db('users').where({ email, is_active: true }).first();
+    const user = await db('users')
+      .leftJoin('organizations', 'users.organization_id', 'organizations.id')
+      .where({ 'users.email': email, 'users.is_active': true })
+      .select('users.*', 'organizations.name as org_name', 'organizations.slug as org_slug')
+      .first();
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       throw new AppError('Credenciales inválidas', 401, 'INVALID_CREDENTIALS');
     }
@@ -69,7 +73,10 @@ router.post('/login', authRateLimiter, [
       data: {
         token,
         refreshToken,
-        user: { id: user.id, email: user.email, fullName: user.full_name, role: user.role },
+        user: {
+          id: user.id, email: user.email, fullName: user.full_name, role: user.role,
+          organizationId: user.organization_id, orgName: user.org_name,
+        },
       },
     });
   } catch (err) { next(err); }
@@ -187,6 +194,7 @@ router.post('/users', authenticate, authorize('admin'), async (req, res, next) =
     const passwordHash = await bcrypt.hash(password, 12);
     const [user] = await db('users').insert({
       email, password_hash: passwordHash, full_name, role,
+      organization_id: req.user.organizationId,
     }).returning(['id', 'email', 'full_name', 'role', 'is_active', 'created_at']);
 
     res.status(201).json({ success: true, data: user });
@@ -210,6 +218,7 @@ router.post('/users', authenticate, authorize('admin'), async (req, res, next) =
 router.get('/users', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const users = await db('users')
+      .where({ organization_id: req.user.organizationId })
       .select('id', 'email', 'full_name', 'role', 'is_active', 'last_login', 'created_at')
       .orderBy('created_at', 'desc');
     res.json({ success: true, data: users });

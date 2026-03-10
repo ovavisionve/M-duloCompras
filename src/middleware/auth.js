@@ -21,12 +21,19 @@ async function authenticate(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, getJwtSecret());
 
-    const user = await db('users').where({ id: decoded.userId, is_active: true }).first();
+    const user = await db('users')
+      .leftJoin('organizations', 'users.organization_id', 'organizations.id')
+      .where({ 'users.id': decoded.userId, 'users.is_active': true })
+      .select('users.*', 'organizations.name as org_name', 'organizations.slug as org_slug')
+      .first();
     if (!user) {
       throw new AppError('Usuario no encontrado o inactivo', 401, 'USER_INACTIVE');
     }
 
-    req.user = { id: user.id, email: user.email, role: user.role, fullName: user.full_name };
+    req.user = {
+      id: user.id, email: user.email, role: user.role, fullName: user.full_name,
+      organizationId: user.organization_id, orgName: user.org_name, orgSlug: user.org_slug,
+    };
     next();
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
@@ -49,9 +56,16 @@ async function authenticateApiKey(req, res, next) {
 
     for (const key of keys) {
       if (await bcrypt.compare(apiKey, key.key_hash)) {
-        const user = await db('users').where({ id: key.user_id, is_active: true }).first();
+        const user = await db('users')
+          .leftJoin('organizations', 'users.organization_id', 'organizations.id')
+          .where({ 'users.id': key.user_id, 'users.is_active': true })
+          .select('users.*', 'organizations.name as org_name', 'organizations.slug as org_slug')
+          .first();
         if (!user) continue;
-        req.user = { id: user.id, email: user.email, role: user.role, fullName: user.full_name };
+        req.user = {
+          id: user.id, email: user.email, role: user.role, fullName: user.full_name,
+          organizationId: user.organization_id, orgName: user.org_name, orgSlug: user.org_slug,
+        };
         req.apiKeyScopes = key.scopes;
         return next();
       }

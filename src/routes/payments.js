@@ -66,7 +66,7 @@ const { paginate } = require('../utils/helpers');
 // GET /payments
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const result = await paymentService.listPayments(req.query);
+    const result = await paymentService.listPayments(req.query, req.user.organizationId);
     res.json({ success: true, ...paginate(result.data, result.total, result.page, result.limit) });
   } catch (err) { next(err); }
 });
@@ -127,6 +127,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
     const summary = await db('payments')
       .where('status', 'activo')
+      .where('organization_id', req.user.organizationId)
       .whereBetween('payment_date', [startDate, endDate])
       .select(
         db.raw('COUNT(*) as total_payments'),
@@ -178,7 +179,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 // GET /payments/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const payment = await paymentService.getPaymentById(req.params.id);
+    const payment = await paymentService.getPaymentById(req.params.id, req.user.organizationId);
     res.json({ success: true, data: payment });
   } catch (err) { next(err); }
 });
@@ -218,7 +219,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.get('/:id/receipt', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
-    const payment = await paymentService.getPaymentById(req.params.id);
+    const payment = await paymentService.getPaymentById(req.params.id, req.user.organizationId);
 
     const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -298,7 +299,7 @@ router.get('/:id/receipt', authenticate, async (req, res, next) => {
 // POST /payments
 router.post('/', authenticate, authorize('admin', 'contador', 'tesorero'), async (req, res, next) => {
   try {
-    const payment = await paymentService.createPayment(req.body, req.user.id, req.ip);
+    const payment = await paymentService.createPayment(req.body, req.user.id, req.ip, req.user.organizationId);
     res.status(201).json({ success: true, data: payment });
   } catch (err) { next(err); }
 });
@@ -359,7 +360,7 @@ router.post('/', authenticate, authorize('admin', 'contador', 'tesorero'), async
 // POST /payments/:id/void
 router.post('/:id/void', authenticate, authorize('admin', 'tesorero'), async (req, res, next) => {
   try {
-    const result = await paymentService.voidPayment(req.params.id, req.body.reason, req.user.id, req.ip);
+    const result = await paymentService.voidPayment(req.params.id, req.body.reason, req.user.id, req.ip, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

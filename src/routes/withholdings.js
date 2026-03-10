@@ -127,7 +127,7 @@ router.get('/rules', authenticate, async (req, res, next) => {
 // GET /withholdings
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const result = await withholdingService.listWithholdings(req.query);
+    const result = await withholdingService.listWithholdings(req.query, req.user.organizationId);
     res.json({ success: true, ...paginate(result.data, result.total, result.page, result.limit) });
   } catch (err) { next(err); }
 });
@@ -173,7 +173,7 @@ router.get('/', authenticate, async (req, res, next) => {
 router.get('/export', authenticate, async (req, res, next) => {
   try {
     const { period, type } = req.query;
-    const result = await withholdingService.listWithholdings({ fiscal_period: period, type, status: 'activa', limit: 1000 });
+    const result = await withholdingService.listWithholdings({ fiscal_period: period, type, status: 'activa', limit: 1000 }, req.user.organizationId);
 
     // Fetch concept codes for withholdings that have a linked rule
     const db = require('../database/connection');
@@ -243,7 +243,7 @@ router.get('/export', authenticate, async (req, res, next) => {
 // GET /withholdings/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const withholding = await withholdingService.getWithholdingById(req.params.id);
+    const withholding = await withholdingService.getWithholdingById(req.params.id, req.user.organizationId);
     res.json({ success: true, data: withholding });
   } catch (err) { next(err); }
 });
@@ -284,11 +284,12 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
   try {
     const PDFDocument = require('pdfkit');
     const { fmtDateISO } = require('../utils/helpers');
-    const withholding = await withholdingService.getWithholdingById(req.params.id);
+    const withholding = await withholdingService.getWithholdingById(req.params.id, req.user.organizationId);
     const db = require('../database/connection');
-    const companyRif = (await db('config').where({ key: 'company_rif' }).first())?.value || '';
-    const companyName = (await db('config').where({ key: 'company_name' }).first())?.value || '';
-    const companyAddress = (await db('config').where({ key: 'company_address' }).first())?.value || '';
+    const orgId = req.user.organizationId;
+    const companyRif = (await db('config').where({ key: 'company_rif', organization_id: orgId }).first())?.value || '';
+    const companyName = (await db('config').where({ key: 'company_name', organization_id: orgId }).first())?.value || '';
+    const companyAddress = (await db('config').where({ key: 'company_address', organization_id: orgId }).first())?.value || '';
 
     // Fetch withholding rule details if available
     let ruleName = '';
@@ -616,7 +617,7 @@ router.get('/:id/pdf', authenticate, async (req, res, next) => {
 // POST /withholdings
 router.post('/', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const withholding = await withholdingService.createWithholding(req.body, req.user.id, req.ip);
+    const withholding = await withholdingService.createWithholding(req.body, req.user.id, req.ip, req.user.organizationId);
     res.status(201).json({ success: true, data: withholding });
   } catch (err) { next(err); }
 });
@@ -677,7 +678,7 @@ router.post('/', authenticate, authorize('admin', 'contador'), async (req, res, 
 // POST /withholdings/:id/void
 router.post('/:id/void', authenticate, authorize('admin', 'contador'), async (req, res, next) => {
   try {
-    const result = await withholdingService.voidWithholding(req.params.id, req.body.reason, req.user.id, req.ip);
+    const result = await withholdingService.voidWithholding(req.params.id, req.body.reason, req.user.id, req.ip, req.user.organizationId);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

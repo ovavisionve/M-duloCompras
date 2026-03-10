@@ -7,7 +7,7 @@ const webhookService = require('./webhookService');
 /**
  * Generate purchase book for a fiscal period
  */
-async function getPurchaseBook(period) {
+async function getPurchaseBook(period, orgId) {
   const invoices = await db('invoices')
     .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
     .leftJoin('withholding_invoices', 'invoices.id', 'withholding_invoices.invoice_id')
@@ -17,6 +17,7 @@ async function getPurchaseBook(period) {
         .andOn('withholdings.status', '=', db.raw("'activa'"));
     })
     .where('invoices.fiscal_period', period)
+    .modify((q) => { if (orgId) q.where('invoices.organization_id', orgId); })
     .whereIn('invoices.status', ['registrada', 'pago_parcial', 'pagada'])
     .select(
       'invoices.*',
@@ -68,13 +69,13 @@ async function getPurchaseBook(period) {
 /**
  * Close a fiscal period
  */
-async function closePeriod(period, userId, ip) {
-  const existing = await db('purchase_books').where({ fiscal_period: period }).first();
+async function closePeriod(period, userId, ip, orgId) {
+  const existing = await db('purchase_books').where({ fiscal_period: period, organization_id: orgId }).first();
   if (existing?.status === 'cerrado') {
     throw new AppError('El período ya está cerrado', 400, 'PERIOD_ALREADY_CLOSED');
   }
 
-  const bookData = await getPurchaseBook(period);
+  const bookData = await getPurchaseBook(period, orgId);
 
   const record = {
     fiscal_period: period,
@@ -86,6 +87,7 @@ async function closePeriod(period, userId, ip) {
     grand_total: bookData.totals.grand_total,
     closed_by: userId,
     closed_at: new Date(),
+    organization_id: orgId,
   };
 
   let result;
@@ -104,12 +106,13 @@ async function closePeriod(period, userId, ip) {
 /**
  * Validate book integrity before closing
  */
-async function validateBook(period) {
+async function validateBook(period, orgId) {
   const issues = [];
 
   // Check for invoices without control number
   const noControl = await db('invoices')
     .where({ fiscal_period: period })
+    .modify((q) => { if (orgId) q.where('organization_id', orgId); })
     .whereIn('status', ['registrada', 'pago_parcial', 'pagada'])
     .whereNot('document_type', 'DSF')
     .whereNull('control_number')
@@ -122,6 +125,7 @@ async function validateBook(period) {
   const noRif = await db('invoices')
     .join('suppliers', 'invoices.supplier_id', 'suppliers.id')
     .where({ 'invoices.fiscal_period': period })
+    .modify((q) => { if (orgId) q.where('invoices.organization_id', orgId); })
     .whereIn('invoices.status', ['registrada', 'pago_parcial', 'pagada'])
     .where('suppliers.rif', '')
     .count();
@@ -132,6 +136,7 @@ async function validateBook(period) {
   // Check for draft invoices in period
   const drafts = await db('invoices')
     .where({ fiscal_period: period, status: 'borrador' })
+    .modify((q) => { if (orgId) q.where('organization_id', orgId); })
     .count();
   if (parseInt(drafts[0].count) > 0) {
     issues.push({ type: 'warning', message: `${drafts[0].count} factura(s) en borrador no incluidas en el libro` });
