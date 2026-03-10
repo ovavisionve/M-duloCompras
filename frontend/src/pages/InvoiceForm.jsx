@@ -20,6 +20,7 @@ export default function InvoiceForm() {
   const [costCenters, setCostCenters] = useState([]);
   const [supplierInvoices, setSupplierInvoices] = useState([]);
   const [rate, setRate] = useState(null);
+  const [binanceRate, setBinanceRate] = useState(null);
   const [error, setError] = useState('');
   const [editLoading, setEditLoading] = useState(!!editId);
   const today = new Date().toISOString().split('T')[0];
@@ -49,6 +50,9 @@ export default function InvoiceForm() {
         setRate(r.data.data);
         if (!editId) setForm((f) => ({ ...f, exchange_rate: r.data.data.rate }));
       }
+    }).catch(() => {});
+    api.get('/exchange-rates/binance').then((r) => {
+      if (r.data.data) setBinanceRate(r.data.data);
     }).catch(() => {});
 
     // Load existing invoice for editing
@@ -286,8 +290,22 @@ export default function InvoiceForm() {
               </select>
             </div>
             <div className="form-group">
-              <label>Tasa BCV *</label>
+              <label>Tasa de Cambio *</label>
               <input type="number" step="0.000001" value={form.exchange_rate} onChange={set('exchange_rate')} required />
+              <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+                {rate && (
+                  <button type="button" className="btn btn-sm" style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}
+                    onClick={() => setForm({ ...form, exchange_rate: rate.rate })}>
+                    BCV: {Number(rate.rate).toFixed(2)}
+                  </button>
+                )}
+                {binanceRate && (
+                  <button type="button" className="btn btn-sm" style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', background: '#fef3c7', border: '1px solid #f59e0b' }}
+                    onClick={() => setForm({ ...form, exchange_rate: binanceRate.rate })}>
+                    Binance: {Number(binanceRate.rate).toFixed(2)}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <div className="form-row">
