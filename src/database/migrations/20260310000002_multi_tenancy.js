@@ -84,38 +84,51 @@ exports.up = async function (knex) {
   await knex('cost_centers').whereNull('organization_id').update({ organization_id: weflyOrg.id });
 
   // ─── 5. UPDATE UNIQUE CONSTRAINTS TO BE COMPOSITE ───
+  // Helper: drop unique constraint by finding its real name in pg_indexes
+  async function dropUniqueConstraint(tableName, columnName) {
+    const result = await knex.raw(`
+      SELECT indexname FROM pg_indexes
+      WHERE tablename = ? AND indexdef LIKE '%UNIQUE%' AND indexdef LIKE ?
+      ORDER BY indexname
+    `, [tableName, `%${columnName}%`]);
+    for (const row of result.rows) {
+      // Skip composite indexes that include organization_id (already migrated)
+      if (row.indexname.includes('organization_id')) continue;
+      await knex.raw(`DROP INDEX IF EXISTS "${row.indexname}"`);
+    }
+  }
 
   // suppliers: rif unique -> (organization_id, rif)
+  await dropUniqueConstraint('suppliers', 'rif');
   await knex.schema.alterTable('suppliers', (t) => {
-    t.dropUnique(['rif']);
     t.unique(['organization_id', 'rif']);
   });
 
   // config: key unique -> (organization_id, key)
+  await dropUniqueConstraint('config', 'key');
   await knex.schema.alterTable('config', (t) => {
-    t.dropUnique(['key']);
     t.unique(['organization_id', 'key']);
   });
 
   // expense_categories: name/code unique -> (org, name), (org, code)
+  await dropUniqueConstraint('expense_categories', 'name');
+  await dropUniqueConstraint('expense_categories', 'code');
   await knex.schema.alterTable('expense_categories', (t) => {
-    t.dropUnique(['name']);
-    t.dropUnique(['code']);
     t.unique(['organization_id', 'name']);
     t.unique(['organization_id', 'code']);
   });
 
   // cost_centers: name/code unique -> (org, name), (org, code)
+  await dropUniqueConstraint('cost_centers', 'name');
+  await dropUniqueConstraint('cost_centers', 'code');
   await knex.schema.alterTable('cost_centers', (t) => {
-    t.dropUnique(['name']);
-    t.dropUnique(['code']);
     t.unique(['organization_id', 'name']);
     t.unique(['organization_id', 'code']);
   });
 
   // purchase_books: fiscal_period unique -> (org, fiscal_period)
+  await dropUniqueConstraint('purchase_books', 'fiscal_period');
   await knex.schema.alterTable('purchase_books', (t) => {
-    t.dropUnique(['fiscal_period']);
     t.unique(['organization_id', 'fiscal_period']);
   });
 
@@ -192,9 +205,10 @@ exports.up = async function (knex) {
 
   const invoices = [
     {
-      supplier_id: sup1.id, document_type: 'FAC', invoice_number: '00001234',
+      supplier_id: sup1.id, document_type: 'FC', invoice_number: '00001234',
       control_number: '00-00001234', emission_date: '2026-03-01', reception_date: '2026-03-02',
       fiscal_period: '03/2026', currency: 'USD', exchange_rate: 78.50,
+      exchange_rate_date: '2026-03-01', description: 'Servicios de soporte técnico mensual',
       taxable_amount: 500, exempt_amount: 0, non_subject_amount: 0,
       vat_rate: 16, vat_amount: 80, igtf_amount: 0,
       total_amount: 580, total_ves: 45530, total_usd: 580,
@@ -202,9 +216,10 @@ exports.up = async function (knex) {
       organization_id: demoOrg.id,
     },
     {
-      supplier_id: sup2.id, document_type: 'FAC', invoice_number: 'A-0045',
+      supplier_id: sup2.id, document_type: 'FC', invoice_number: 'A-0045',
       control_number: '00-00009876', emission_date: '2026-02-15', reception_date: '2026-02-16',
       fiscal_period: '02/2026', currency: 'VES', exchange_rate: 77.80,
+      exchange_rate_date: '2026-02-15', description: 'Alquiler de oficina febrero 2026',
       taxable_amount: 12000, exempt_amount: 3000, non_subject_amount: 0,
       vat_rate: 16, vat_amount: 1920, igtf_amount: 0,
       total_amount: 16920, total_ves: 16920, total_usd: 217.48,
@@ -212,9 +227,10 @@ exports.up = async function (knex) {
       organization_id: demoOrg.id,
     },
     {
-      supplier_id: sup3.id, document_type: 'FAC', invoice_number: '0001',
+      supplier_id: sup3.id, document_type: 'FC', invoice_number: '0001',
       control_number: '00-00000001', emission_date: '2026-03-05', reception_date: '2026-03-06',
       fiscal_period: '03/2026', currency: 'VES', exchange_rate: 78.50,
+      exchange_rate_date: '2026-03-05', description: 'Consultoría administrativa marzo 2026',
       taxable_amount: 8000, exempt_amount: 0, non_subject_amount: 0,
       vat_rate: 16, vat_amount: 1280, igtf_amount: 0,
       total_amount: 9280, total_ves: 9280, total_usd: 118.22,

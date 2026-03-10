@@ -32,6 +32,8 @@ async function start() {
     }
   } catch (err) {
     logger.error('Migration failed:', err.message);
+    logger.error(err.stack);
+    process.exit(1);
   }
 
   const server = app.listen(PORT, () => {
