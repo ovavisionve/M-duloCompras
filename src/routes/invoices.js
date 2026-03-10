@@ -302,10 +302,15 @@ router.get('/:id/balance', authenticate, async (req, res, next) => {
       .where({ 'withholding_invoices.invoice_id': req.params.id, 'withholdings.status': 'activa' })
       .sum('withholding_invoices.withheld_amount as total');
 
+    const [ncResult] = await db('credit_note_applications')
+      .where('credit_note_applications.invoice_id', req.params.id)
+      .sum('credit_note_applications.amount_applied as total');
+
     const totalPaid = parseFloat(paymentsResult?.total) || 0;
     const totalWithheld = parseFloat(withholdingsResult?.total) || 0;
+    const totalNC = parseFloat(ncResult?.total) || 0;
     const totalAmount = parseFloat(invoice.total_amount);
-    const remaining = Math.max(0, Math.round((totalAmount - totalPaid - totalWithheld) * 100) / 100);
+    const remaining = Math.max(0, Math.round((totalAmount - totalPaid - totalWithheld - totalNC) * 100) / 100);
 
     res.json({
       success: true,
@@ -313,6 +318,7 @@ router.get('/:id/balance', authenticate, async (req, res, next) => {
         total_amount: totalAmount,
         total_paid: totalPaid,
         total_withheld: totalWithheld,
+        total_credit_notes: totalNC,
         remaining,
         currency: invoice.currency,
         is_fully_paid: remaining <= 0.01,

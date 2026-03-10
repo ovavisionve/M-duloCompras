@@ -170,6 +170,28 @@ async function getInvoiceById(id, orgId) {
     .where('withholding_invoices.invoice_id', id)
     .select('withholdings.*', 'withholding_invoices.withheld_amount');
 
+  // Credit note applications (NC applied to this invoice)
+  invoice.credit_note_applications = await db('credit_note_applications')
+    .join('invoices as cn', 'credit_note_applications.credit_note_id', 'cn.id')
+    .where('credit_note_applications.invoice_id', id)
+    .select(
+      'credit_note_applications.*',
+      'cn.invoice_number as credit_note_number',
+      'cn.total_amount as credit_note_total'
+    );
+
+  // If this IS a credit note, get its applications to invoices
+  if (invoice.document_type === 'NC') {
+    invoice.applied_to = await db('credit_note_applications')
+      .join('invoices as inv', 'credit_note_applications.invoice_id', 'inv.id')
+      .where('credit_note_applications.credit_note_id', id)
+      .select(
+        'credit_note_applications.*',
+        'inv.invoice_number',
+        'inv.total_amount as invoice_total'
+      );
+  }
+
   return invoice;
 }
 
@@ -232,9 +254,14 @@ async function recalculateInvoiceStatus(invoiceId) {
     .where({ 'withholding_invoices.invoice_id': invoiceId, 'withholdings.status': 'activa' })
     .sum('withholding_invoices.withheld_amount as total_withheld');
 
+  const [ncResult] = await db('credit_note_applications')
+    .where({ invoice_id: invoiceId })
+    .sum('amount_applied as total_nc');
+
   const totalPaid = parseFloat(paymentsResult?.total_paid) || 0;
   const totalWithheld = parseFloat(withholdingsResult?.total_withheld) || 0;
-  const totalCovered = round2(totalPaid + totalWithheld);
+  const totalNC = parseFloat(ncResult?.total_nc) || 0;
+  const totalCovered = round2(totalPaid + totalWithheld + totalNC);
   const invoiceTotal = parseFloat(invoice.total_amount);
 
   let newStatus;

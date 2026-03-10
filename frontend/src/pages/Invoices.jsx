@@ -217,6 +217,7 @@ export default function Invoices() {
                 <div><strong>Total Factura:</strong> {fmtNum(balance.total_amount)} {balance.currency}</div>
                 <div><strong>Pagado:</strong> {fmtNum(balance.total_paid)}</div>
                 {balance.total_withheld > 0 && <div><strong>Retenido:</strong> {fmtNum(balance.total_withheld)}</div>}
+                {balance.total_credit_notes > 0 && <div><strong>NC Aplicadas:</strong> {fmtNum(balance.total_credit_notes)}</div>}
                 <div style={{ fontWeight: 'bold', color: balance.remaining <= 0.01 ? '#16a34a' : '#d97706' }}>
                   Saldo Pendiente: {fmtNum(balance.remaining)} {balance.currency}
                 </div>
@@ -230,6 +231,16 @@ export default function Invoices() {
               {detail.payments.map((p, i) => (
                 <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
                   {fmtDate(p.payment_date)} - {p.payment_method} - {fmtNum(p.amount_applied)} {p.currency} (Ref: {p.reference_number || 'N/A'})
+                </div>
+              ))}
+            </div>
+          )}
+          {detail.credit_note_applications?.length > 0 && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <strong>Notas de credito aplicadas:</strong>
+              {detail.credit_note_applications.map((nc, i) => (
+                <div key={i} style={{ fontSize: '0.85rem', color: 'var(--gray-700)', marginLeft: '1rem' }}>
+                  NC {nc.credit_note_number} - {fmtNum(nc.amount_applied)} (Fecha: {fmtDate(nc.applied_date)})
                 </div>
               ))}
             </div>

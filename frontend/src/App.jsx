@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, Users, CreditCard, BookOpen,
-  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell
+  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell, FileMinus
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Suppliers from './pages/Suppliers';
@@ -16,6 +16,7 @@ import ExchangeRates from './pages/ExchangeRates';
 import Configuration from './pages/Configuration';
 import Reports from './pages/Reports';
 import Treasury from './pages/Treasury';
+import CreditNotes from './pages/CreditNotes';
 import Login from './pages/Login';
 
 function ProtectedRoute({ children }) {
@@ -48,6 +49,9 @@ function Sidebar() {
         <div className="sidebar-section">Operaciones</div>
         <NavLink to="/invoices" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <FileText size={18} /> Facturas
+        </NavLink>
+        <NavLink to="/credit-notes" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <FileMinus size={18} /> Notas de Credito
         </NavLink>
         <NavLink to="/suppliers" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <Users size={18} /> Proveedores
@@ -118,6 +122,7 @@ export default function App() {
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/invoices/new" element={<InvoiceForm />} />
+                <Route path="/credit-notes" element={<CreditNotes />} />
                 <Route path="/withholdings" element={<Withholdings />} />
                 <Route path="/payments" element={<Payments />} />
                 <Route path="/purchase-book" element={<PurchaseBook />} />
