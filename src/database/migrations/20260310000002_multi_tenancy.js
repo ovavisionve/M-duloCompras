@@ -84,15 +84,28 @@ exports.up = async function (knex) {
   await knex('cost_centers').whereNull('organization_id').update({ organization_id: weflyOrg.id });
 
   // ─── 5. UPDATE UNIQUE CONSTRAINTS TO BE COMPOSITE ───
-  // Helper: drop unique constraint by finding its real name in pg_indexes
+  // Helper: drop unique constraint by finding its real name in pg_constraint
   async function dropUniqueConstraint(tableName, columnName) {
-    const result = await knex.raw(`
+    // First try dropping as a constraint (how Knex creates them via .unique())
+    const constraints = await knex.raw(`
+      SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+      WHERE rel.relname = ?
+        AND con.contype = 'u'
+        AND pg_get_constraintdef(con.oid) LIKE ?
+    `, [tableName, `%(${columnName})%`]);
+    for (const row of constraints.rows) {
+      if (row.conname.includes('organization_id')) continue;
+      await knex.raw(`ALTER TABLE "${tableName}" DROP CONSTRAINT IF EXISTS "${row.conname}"`);
+    }
+    // Also drop any standalone unique indexes (just in case)
+    const indexes = await knex.raw(`
       SELECT indexname FROM pg_indexes
       WHERE tablename = ? AND indexdef LIKE '%UNIQUE%' AND indexdef LIKE ?
-      ORDER BY indexname
-    `, [tableName, `%${columnName}%`]);
-    for (const row of result.rows) {
-      // Skip composite indexes that include organization_id (already migrated)
+    `, [tableName, `%(${columnName})%`]);
+    for (const row of indexes.rows) {
       if (row.indexname.includes('organization_id')) continue;
       await knex.raw(`DROP INDEX IF EXISTS "${row.indexname}"`);
     }
