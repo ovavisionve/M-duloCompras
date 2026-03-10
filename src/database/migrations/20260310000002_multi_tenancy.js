@@ -84,66 +84,29 @@ exports.up = async function (knex) {
   await knex('cost_centers').whereNull('organization_id').update({ organization_id: weflyOrg.id });
 
   // ─── 5. UPDATE UNIQUE CONSTRAINTS TO BE COMPOSITE ───
-  // Helper: drop unique constraint by finding its real name in pg_constraint
-  async function dropUniqueConstraint(tableName, columnName) {
-    // First try dropping as a constraint (how Knex creates them via .unique())
-    const constraints = await knex.raw(`
-      SELECT con.conname
-      FROM pg_constraint con
-      JOIN pg_class rel ON rel.oid = con.conrelid
-      JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-      WHERE rel.relname = ?
-        AND con.contype = 'u'
-        AND pg_get_constraintdef(con.oid) LIKE ?
-    `, [tableName, `%(${columnName})%`]);
-    for (const row of constraints.rows) {
-      if (row.conname.includes('organization_id')) continue;
-      await knex.raw(`ALTER TABLE "${tableName}" DROP CONSTRAINT IF EXISTS "${row.conname}"`);
-    }
-    // Also drop any standalone unique indexes (just in case)
-    const indexes = await knex.raw(`
-      SELECT indexname FROM pg_indexes
-      WHERE tablename = ? AND indexdef LIKE '%UNIQUE%' AND indexdef LIKE ?
-    `, [tableName, `%(${columnName})%`]);
-    for (const row of indexes.rows) {
-      if (row.indexname.includes('organization_id')) continue;
-      await knex.raw(`DROP INDEX IF EXISTS "${row.indexname}"`);
-    }
-  }
+  // Knex names constraints as "tablename_column_unique" — use ALTER TABLE DROP CONSTRAINT directly
+  await knex.raw('ALTER TABLE "suppliers" DROP CONSTRAINT IF EXISTS "suppliers_rif_unique"');
+  await knex.schema.alterTable('suppliers', (t) => { t.unique(['organization_id', 'rif']); });
 
-  // suppliers: rif unique -> (organization_id, rif)
-  await dropUniqueConstraint('suppliers', 'rif');
-  await knex.schema.alterTable('suppliers', (t) => {
-    t.unique(['organization_id', 'rif']);
-  });
+  await knex.raw('ALTER TABLE "config" DROP CONSTRAINT IF EXISTS "config_key_unique"');
+  await knex.schema.alterTable('config', (t) => { t.unique(['organization_id', 'key']); });
 
-  // config: key unique -> (organization_id, key)
-  await dropUniqueConstraint('config', 'key');
-  await knex.schema.alterTable('config', (t) => {
-    t.unique(['organization_id', 'key']);
-  });
-
-  // expense_categories: name/code unique -> (org, name), (org, code)
-  await dropUniqueConstraint('expense_categories', 'name');
-  await dropUniqueConstraint('expense_categories', 'code');
+  await knex.raw('ALTER TABLE "expense_categories" DROP CONSTRAINT IF EXISTS "expense_categories_name_unique"');
+  await knex.raw('ALTER TABLE "expense_categories" DROP CONSTRAINT IF EXISTS "expense_categories_code_unique"');
   await knex.schema.alterTable('expense_categories', (t) => {
     t.unique(['organization_id', 'name']);
     t.unique(['organization_id', 'code']);
   });
 
-  // cost_centers: name/code unique -> (org, name), (org, code)
-  await dropUniqueConstraint('cost_centers', 'name');
-  await dropUniqueConstraint('cost_centers', 'code');
+  await knex.raw('ALTER TABLE "cost_centers" DROP CONSTRAINT IF EXISTS "cost_centers_name_unique"');
+  await knex.raw('ALTER TABLE "cost_centers" DROP CONSTRAINT IF EXISTS "cost_centers_code_unique"');
   await knex.schema.alterTable('cost_centers', (t) => {
     t.unique(['organization_id', 'name']);
     t.unique(['organization_id', 'code']);
   });
 
-  // purchase_books: fiscal_period unique -> (org, fiscal_period)
-  await dropUniqueConstraint('purchase_books', 'fiscal_period');
-  await knex.schema.alterTable('purchase_books', (t) => {
-    t.unique(['organization_id', 'fiscal_period']);
-  });
+  await knex.raw('ALTER TABLE "purchase_books" DROP CONSTRAINT IF EXISTS "purchase_books_fiscal_period_unique"');
+  await knex.schema.alterTable('purchase_books', (t) => { t.unique(['organization_id', 'fiscal_period']); });
 
   // ─── 6. DUPLICATE CONFIG FOR DEMO ORG ───
   const weflyConfigs = await knex('config').where({ organization_id: weflyOrg.id });
