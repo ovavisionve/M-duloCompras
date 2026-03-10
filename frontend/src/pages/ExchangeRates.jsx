@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { RefreshCw, Plus, TrendingUp } from 'lucide-react';
+import { RefreshCw, Plus } from 'lucide-react';
 import api from '../api';
 import { fmtNum } from '../utils/format';
 
 export default function ExchangeRates() {
   const [rates, setRates] = useState([]);
   const [todayRate, setTodayRate] = useState(null);
-  const [binanceRate, setBinanceRate] = useState(null);
-  const [binanceLoading, setBinanceLoading] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [manualForm, setManualForm] = useState({ date: new Date().toISOString().split('T')[0], rate: '' });
   const [loading, setLoading] = useState(true);
@@ -18,34 +16,13 @@ export default function ExchangeRates() {
     api.get('/exchange-rates/today').then((r) => setTodayRate(r.data.data)).catch(() => {});
   };
 
-  useEffect(() => { load(); fetchBinance(); }, []);
+  useEffect(() => { load(); }, []);
 
   const fetchNow = async () => {
     try {
       await api.post('/exchange-rates/fetch');
       load();
     } catch (err) { alert(err.response?.data?.error?.message || 'Error al obtener tasa'); }
-  };
-
-  const fetchBinance = async () => {
-    setBinanceLoading(true);
-    try {
-      const r = await api.get('/exchange-rates/binance');
-      setBinanceRate(r.data.data);
-    } catch { setBinanceRate(null); }
-    finally { setBinanceLoading(false); }
-  };
-
-  const useBinanceAsManual = async () => {
-    if (!binanceRate) return;
-    try {
-      await api.post('/exchange-rates/manual', {
-        date: new Date().toISOString().split('T')[0],
-        rate: binanceRate.rate,
-      });
-      load();
-      alert(`Tasa Binance (${binanceRate.rate}) guardada como tasa del dia`);
-    } catch (err) { alert(err.response?.data?.error?.message || 'Error'); }
   };
 
   const submitManual = async (e) => {
@@ -59,48 +36,25 @@ export default function ExchangeRates() {
 
   const chartData = [...rates].reverse().map((r) => ({ date: r.rate_date, rate: parseFloat(r.rate) }));
 
-  const spread = todayRate && binanceRate
-    ? Math.abs(parseFloat(binanceRate.rate) - parseFloat(todayRate.rate)).toFixed(2)
-    : null;
-
   return (
     <div>
       <div className="page-header">
-        <h1>Tasas de Cambio</h1>
+        <h1>Tasas de Cambio BCV</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn btn-primary" onClick={fetchNow}><RefreshCw size={14} /> Obtener Tasa BCV</button>
-          <button className="btn" onClick={fetchBinance} disabled={binanceLoading}>
-            <TrendingUp size={14} /> {binanceLoading ? 'Consultando...' : 'Tasa Binance'}
-          </button>
           <button className="btn" onClick={() => setShowManual(!showManual)}><Plus size={14} /> Tasa Manual</button>
         </div>
       </div>
 
-      {/* Rate cards */}
-      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-        {todayRate && (
+      {todayRate && (
+        <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
           <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
             <div className="label">Tasa BCV Hoy</div>
             <div className="value">Bs. {fmtNum(todayRate.rate)}</div>
-            <div className="sub">Fecha: {todayRate.rate_date} | Fuente: {todayRate.source === 'bcv_api' ? 'BCV' : todayRate.source === 'binance_p2p' ? 'Binance' : 'Manual'}</div>
+            <div className="sub">Fecha: {todayRate.rate_date} | Fuente: {todayRate.source === 'bcv_api' ? 'BCV API' : 'Manual'}</div>
           </div>
-        )}
-        {binanceRate && (
-          <div className="stat-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-            <div className="label">Tasa Binance P2P (USDT/VES)</div>
-            <div className="value">Bs. {fmtNum(binanceRate.rate)}</div>
-            <div className="sub" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                Mediana de anuncios SELL
-                {spread && <> | Spread vs BCV: Bs. {spread}</>}
-              </span>
-              <button className="btn btn-sm" onClick={useBinanceAsManual} style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem' }}>
-                Usar como tasa del dia
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {showManual && (
         <div className="card" style={{ marginBottom: '1rem' }}>
@@ -151,9 +105,7 @@ export default function ExchangeRates() {
               <tr key={r.id}>
                 <td>{r.rate_date}</td>
                 <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{Number(r.rate).toFixed(6)}</td>
-                <td><span className={`badge ${r.source === 'bcv_api' ? 'badge-green' : r.source === 'binance_p2p' ? 'badge-orange' : 'badge-yellow'}`}>
-                  {r.source === 'bcv_api' ? 'BCV' : r.source === 'binance_p2p' ? 'Binance P2P' : 'Manual'}
-                </span></td>
+                <td><span className={`badge ${r.source === 'bcv_api' ? 'badge-green' : 'badge-yellow'}`}>{r.source === 'bcv_api' ? 'BCV API' : 'Manual'}</span></td>
               </tr>
             ))}
             {!rates.length && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--gray-500)' }}>{loading ? 'Cargando...' : 'Sin tasas registradas'}</td></tr>}
