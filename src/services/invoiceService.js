@@ -90,6 +90,14 @@ async function createInvoice(data, userId, ip, orgId) {
   await auditService.logAction(userId, 'invoice', invoice.id, 'create', null, invoice, ip);
   webhookService.emit('invoice.created', { id: invoice.id, supplier_id: invoice.supplier_id, total: invoice.total_amount, currency: invoice.currency });
 
+  // Auto-sync to Wave on creation if status is registrada (non-blocking)
+  if (invoice.status === 'registrada') {
+    try {
+      const waveService = require('./waveService');
+      waveService.autoSyncInvoice(orgId, invoice.id, invoice.status);
+    } catch { /* Wave module optional */ }
+  }
+
   return invoice;
 }
 
@@ -134,6 +142,12 @@ async function changeStatus(id, newStatus, userId, ip, orgId) {
 
   await auditService.logAction(userId, 'invoice', id, 'status_change', { status: oldStatus }, { status: newStatus }, ip);
   webhookService.emit('invoice.status_changed', { id, old_status: oldStatus, new_status: newStatus });
+
+  // Auto-sync to Wave (non-blocking)
+  try {
+    const waveService = require('./waveService');
+    waveService.autoSyncInvoice(orgId, id, newStatus);
+  } catch { /* Wave module optional */ }
 
   return result;
 }
@@ -275,6 +289,14 @@ async function recalculateInvoiceStatus(invoiceId) {
 
   if (newStatus !== invoice.status) {
     await db('invoices').where({ id: invoiceId }).update({ status: newStatus });
+
+    // Auto-sync to Wave when payment completes invoice (non-blocking)
+    if (newStatus === 'registrada' || newStatus === 'pagada') {
+      try {
+        const waveService = require('./waveService');
+        waveService.autoSyncInvoice(invoice.organization_id, invoiceId, newStatus);
+      } catch { /* Wave module optional */ }
+    }
   }
 }
 

@@ -35,21 +35,24 @@ async function getConfig(orgId) {
 
 async function saveConfig(orgId, data) {
   const existing = await getConfig(orgId);
+  const fields = [
+    'access_token', 'business_id', 'business_name', 'is_active',
+    'sync_invoices', 'sync_suppliers', 'auto_sync',
+    'default_wave_product_id', 'default_wave_product_name',
+  ];
   if (existing) {
-    await db('wave_config').where({ id: existing.id }).update({
-      access_token: data.access_token ?? existing.access_token,
-      business_id: data.business_id ?? existing.business_id,
-      business_name: data.business_name ?? existing.business_name,
-      is_active: data.is_active ?? existing.is_active,
-      sync_invoices: data.sync_invoices ?? existing.sync_invoices,
-      sync_suppliers: data.sync_suppliers ?? existing.sync_suppliers,
-      updated_at: new Date(),
-    });
+    const update = { updated_at: new Date() };
+    for (const f of fields) {
+      if (data[f] !== undefined) update[f] = data[f];
+    }
+    await db('wave_config').where({ id: existing.id }).update(update);
     return getConfig(orgId);
   }
-  const [inserted] = await db('wave_config')
-    .insert({ organization_id: orgId, ...data })
-    .returning('*');
+  const insert = { organization_id: orgId };
+  for (const f of fields) {
+    if (data[f] !== undefined) insert[f] = data[f];
+  }
+  const [inserted] = await db('wave_config').insert(insert).returning('*');
   return inserted;
 }
 
@@ -79,6 +82,7 @@ async function getSyncLogs(orgId, filters = {}) {
     .orderBy('created_at', 'desc');
   if (filters.entity_type) query.where('entity_type', filters.entity_type);
   if (filters.status) query.where('status', filters.status);
+  if (filters.direction) query.where('direction', filters.direction);
   const limit = parseInt(filters.limit) || 50;
   return query.limit(limit);
 }
@@ -90,6 +94,13 @@ async function getWaveId(orgId, entityType, localId) {
     .where({ organization_id: orgId, entity_type: entityType, local_id: localId })
     .first();
   return map?.wave_id || null;
+}
+
+async function getLocalId(orgId, entityType, waveId) {
+  const map = await db('wave_entity_map')
+    .where({ organization_id: orgId, entity_type: entityType, wave_id: waveId })
+    .first();
+  return map?.local_id || null;
 }
 
 async function setWaveId(orgId, entityType, localId, waveId) {
@@ -110,6 +121,75 @@ async function setWaveId(orgId, entityType, localId, waveId) {
       wave_id: waveId,
     });
   }
+}
+
+async function getAllMappings(orgId, entityType) {
+  return db('wave_entity_map')
+    .where({ organization_id: orgId, entity_type: entityType });
+}
+
+// ─── PRODUCT MAPPING ─────────────────────────────────────────────
+
+async function getProductMappings(orgId) {
+  return db('wave_product_map')
+    .leftJoin('expense_categories', 'wave_product_map.expense_category_id', 'expense_categories.id')
+    .where('wave_product_map.organization_id', orgId)
+    .select('wave_product_map.*', 'expense_categories.name as category_name');
+}
+
+async function saveProductMapping(orgId, data) {
+  const existing = await db('wave_product_map')
+    .where({ organization_id: orgId, wave_product_id: data.wave_product_id })
+    .first();
+  if (existing) {
+    await db('wave_product_map').where({ id: existing.id }).update({
+      wave_product_name: data.wave_product_name,
+      expense_category_id: data.expense_category_id || null,
+      local_description: data.local_description || null,
+      is_default: data.is_default || false,
+      updated_at: new Date(),
+    });
+    return db('wave_product_map').where({ id: existing.id }).first();
+  }
+  const [inserted] = await db('wave_product_map').insert({
+    organization_id: orgId, ...data,
+  }).returning('*');
+  return inserted;
+}
+
+async function deleteProductMapping(orgId, mappingId) {
+  return db('wave_product_map').where({ id: mappingId, organization_id: orgId }).del();
+}
+
+// ─── ACCOUNT MAPPING ─────────────────────────────────────────────
+
+async function getAccountMappings(orgId) {
+  return db('wave_account_map')
+    .join('expense_categories', 'wave_account_map.expense_category_id', 'expense_categories.id')
+    .where('wave_account_map.organization_id', orgId)
+    .select('wave_account_map.*', 'expense_categories.name as category_name');
+}
+
+async function saveAccountMapping(orgId, data) {
+  const existing = await db('wave_account_map')
+    .where({ organization_id: orgId, expense_category_id: data.expense_category_id })
+    .first();
+  if (existing) {
+    await db('wave_account_map').where({ id: existing.id }).update({
+      wave_account_id: data.wave_account_id,
+      wave_account_name: data.wave_account_name || null,
+      updated_at: new Date(),
+    });
+    return db('wave_account_map').where({ id: existing.id }).first();
+  }
+  const [inserted] = await db('wave_account_map').insert({
+    organization_id: orgId, ...data,
+  }).returning('*');
+  return inserted;
+}
+
+async function deleteAccountMapping(orgId, mappingId) {
+  return db('wave_account_map').where({ id: mappingId, organization_id: orgId }).del();
 }
 
 // ─── WAVE API: TEST CONNECTION ────────────────────────────────────
@@ -161,26 +241,22 @@ async function getWaveCustomers(accessToken, businessId) {
 }
 
 async function createWaveCustomer(accessToken, businessId, supplier) {
+  const input = {
+    businessId,
+    name: supplier.business_name || supplier.contact_name || 'Sin nombre',
+  };
+  if (supplier.email) input.email = supplier.email;
+  if (supplier.fiscal_address) input.address = { addressLine1: supplier.fiscal_address };
+
   const data = await waveQuery(accessToken, `
     mutation ($input: CustomerCreateInput!) {
       customerCreate(input: $input) {
         didSucceed
         inputErrors { message path }
-        customer {
-          id
-          name
-          email
-        }
+        customer { id name email }
       }
     }
-  `, {
-    input: {
-      businessId,
-      name: supplier.business_name || supplier.contact_name,
-      email: supplier.email || undefined,
-      address: supplier.address ? { addressLine1: supplier.address } : undefined,
-    },
-  });
+  `, { input });
 
   const result = data.customerCreate;
   if (!result.didSucceed) {
@@ -212,6 +288,32 @@ async function getWaveProducts(accessToken, businessId) {
   return data.business.products.edges.map((e) => e.node);
 }
 
+async function createWaveProduct(accessToken, businessId, name, unitPrice) {
+  const data = await waveQuery(accessToken, `
+    mutation ($input: ProductCreateInput!) {
+      productCreate(input: $input) {
+        didSucceed
+        inputErrors { message path }
+        product { id name unitPrice }
+      }
+    }
+  `, {
+    input: {
+      businessId,
+      name,
+      unitPrice: parseFloat(unitPrice || 0).toFixed(2),
+      isBought: true,
+      isSold: false,
+    },
+  });
+
+  const result = data.productCreate;
+  if (!result.didSucceed) {
+    throw new Error(`Wave productCreate failed: ${result.inputErrors.map((e) => e.message).join('; ')}`);
+  }
+  return result.product;
+}
+
 // ─── WAVE API: ACCOUNTS ──────────────────────────────────────────
 
 async function getWaveAccounts(accessToken, businessId) {
@@ -235,15 +337,68 @@ async function getWaveAccounts(accessToken, businessId) {
   return data.business.accounts.edges.map((e) => e.node);
 }
 
+// ─── WAVE API: TRANSACTIONS (for expense recording) ──────────────
+
+async function createWaveTransaction(accessToken, businessId, accountId, amount, description, date) {
+  const data = await waveQuery(accessToken, `
+    mutation ($input: MoneyTransactionCreateInput!) {
+      moneyTransactionCreate(input: $input) {
+        didSucceed
+        inputErrors { message path }
+        transaction { id description }
+      }
+    }
+  `, {
+    input: {
+      businessId,
+      externalId: `comprar-ia-${Date.now()}`,
+      date: date || new Date().toISOString().split('T')[0],
+      description,
+      anchor: {
+        accountId,
+        amount: parseFloat(amount).toFixed(2),
+        direction: 'WITHDRAWAL',
+      },
+      lineItems: [{
+        accountId,
+        amount: parseFloat(amount).toFixed(2),
+        balance: 'DEBIT',
+      }],
+    },
+  });
+
+  const result = data.moneyTransactionCreate;
+  if (!result.didSucceed) {
+    throw new Error(`Wave transaction failed: ${result.inputErrors.map((e) => e.message).join('; ')}`);
+  }
+  return result.transaction;
+}
+
 // ─── WAVE API: INVOICES ──────────────────────────────────────────
 
-async function createWaveInvoice(accessToken, businessId, customerId, invoice, items) {
-  const waveItems = items.map((item) => ({
-    productId: item.wave_product_id || undefined,
-    description: item.description || item.concept || 'Servicio',
-    quantity: parseFloat(item.quantity) || 1,
-    unitPrice: parseFloat(item.unit_price || item.base_amount || 0).toFixed(2),
-  }));
+async function createWaveInvoice(accessToken, businessId, customerId, invoice, items, config) {
+  // Resolve product ID for items
+  const defaultProductId = config?.default_wave_product_id || undefined;
+
+  const waveItems = items.map((item) => {
+    const waveItem = {
+      description: item.description || 'Servicio',
+      quantity: parseFloat(item.quantity) || 1,
+      unitPrice: parseFloat(item.unit_price || 0).toFixed(2),
+    };
+    if (defaultProductId) waveItem.productId = defaultProductId;
+    return waveItem;
+  });
+
+  // If no items, create one from the invoice totals
+  if (waveItems.length === 0) {
+    waveItems.push({
+      description: invoice.description || `Factura ${invoice.invoice_number}`,
+      quantity: 1,
+      unitPrice: parseFloat(invoice.taxable_amount || invoice.total_amount || 0).toFixed(2),
+      ...(defaultProductId ? { productId: defaultProductId } : {}),
+    });
+  }
 
   const data = await waveQuery(accessToken, `
     mutation ($input: InvoiceCreateInput!) {
@@ -264,9 +419,8 @@ async function createWaveInvoice(accessToken, businessId, customerId, invoice, i
       businessId,
       customerId,
       status: 'SAVED',
-      invoiceDate: invoice.invoice_date || new Date().toISOString().split('T')[0],
-      dueDate: invoice.due_date || undefined,
-      memo: `Factura ${invoice.invoice_number || ''} - Comprar-IA`,
+      invoiceDate: invoice.emission_date || new Date().toISOString().split('T')[0],
+      memo: `Factura ${invoice.invoice_number || ''} | ${invoice.description || ''} | Comprar-IA`.trim(),
       items: waveItems,
     },
   });
@@ -276,6 +430,48 @@ async function createWaveInvoice(accessToken, businessId, customerId, invoice, i
     throw new Error(`Wave invoiceCreate failed: ${result.inputErrors.map((e) => e.message).join('; ')}`);
   }
   return result.invoice;
+}
+
+// ─── WAVE API: LIST INVOICES (Pull) ──────────────────────────────
+
+async function getWaveInvoices(accessToken, businessId, page = 1) {
+  const data = await waveQuery(accessToken, `
+    query ($businessId: ID!, $page: Int!, $pageSize: Int!) {
+      business(id: $businessId) {
+        invoices(page: $page, pageSize: $pageSize) {
+          edges {
+            node {
+              id
+              invoiceNumber
+              status
+              invoiceDate
+              dueDate
+              memo
+              customer { id name }
+              total { value currency { code } }
+              amountDue { value }
+              amountPaid { value }
+              items {
+                description
+                quantity
+                price
+                subtotal { value }
+                total { value }
+              }
+              viewUrl
+            }
+          }
+          pageInfo { totalPages currentPage totalCount }
+        }
+      }
+    }
+  `, { businessId, page, pageSize: 50 });
+
+  const invoicesData = data.business.invoices;
+  return {
+    invoices: invoicesData.edges.map((e) => e.node),
+    pageInfo: invoicesData.pageInfo,
+  };
 }
 
 // ─── SYNC OPERATIONS ─────────────────────────────────────────────
@@ -323,7 +519,7 @@ async function syncInvoiceToWave(orgId, invoiceId) {
 
   // Create invoice in Wave
   try {
-    const waveInvoice = await createWaveInvoice(config.access_token, config.business_id, waveCustomerId, invoice, items);
+    const waveInvoice = await createWaveInvoice(config.access_token, config.business_id, waveCustomerId, invoice, items, config);
     await setWaveId(orgId, 'invoice', invoiceId, waveInvoice.id);
     await logSync(orgId, 'invoice', 'push', invoiceId, waveInvoice.id, 'success', null, { invoice_number: invoice.invoice_number }, waveInvoice);
     logger.info(`Invoice ${invoice.invoice_number} synced to Wave: ${waveInvoice.id}`);
@@ -341,7 +537,7 @@ async function syncAllInvoicesToWave(orgId) {
   const config = await getConfig(orgId);
   if (!config?.is_active) throw new Error('Wave no está configurado');
 
-  // Find invoices not yet synced
+  // Find invoices not yet synced — use correct DB status values
   const syncedIds = await db('wave_entity_map')
     .where({ organization_id: orgId, entity_type: 'invoice' })
     .select('local_id');
@@ -349,7 +545,7 @@ async function syncAllInvoicesToWave(orgId) {
 
   const invoices = await db('invoices')
     .where({ organization_id: orgId })
-    .whereIn('status', ['approved', 'paid', 'partial'])
+    .whereIn('status', ['registrada', 'pagada', 'pago_parcial'])
     .select('id', 'invoice_number');
 
   const results = { synced: 0, errors: 0, skipped: 0, details: [] };
@@ -374,15 +570,110 @@ async function syncAllInvoicesToWave(orgId) {
 }
 
 /**
+ * Auto-sync: called from invoiceService when status changes
+ * Non-blocking — logs errors but doesn't throw
+ */
+async function autoSyncInvoice(orgId, invoiceId, newStatus) {
+  try {
+    const config = await getConfig(orgId);
+    if (!config?.is_active || !config.auto_sync || !config.sync_invoices) return;
+
+    // Only sync on these statuses
+    if (!['registrada', 'pagada', 'pago_parcial'].includes(newStatus)) return;
+
+    // Already synced?
+    const existing = await getWaveId(orgId, 'invoice', invoiceId);
+    if (existing) return;
+
+    await syncInvoiceToWave(orgId, invoiceId);
+    logger.info(`Auto-synced invoice ${invoiceId} to Wave on status: ${newStatus}`);
+  } catch (err) {
+    logger.warn(`Auto-sync to Wave failed for invoice ${invoiceId}: ${err.message}`);
+    // Don't throw — auto-sync should be silent
+  }
+}
+
+/**
+ * Pull invoices from Wave (bidirectional sync)
+ */
+async function pullInvoicesFromWave(orgId) {
+  const config = await getConfig(orgId);
+  if (!config?.is_active) throw new Error('Wave no está configurado');
+
+  const { invoices, pageInfo } = await getWaveInvoices(config.access_token, config.business_id);
+
+  const results = { total: pageInfo.totalCount, fetched: invoices.length, new: 0, existing: 0, details: [] };
+
+  for (const waveInv of invoices) {
+    // Check if already mapped
+    const localId = await getLocalId(orgId, 'invoice', waveInv.id);
+    if (localId) {
+      results.existing++;
+      continue;
+    }
+
+    results.new++;
+    results.details.push({
+      wave_id: waveInv.id,
+      number: waveInv.invoiceNumber,
+      status: waveInv.status,
+      customer: waveInv.customer?.name,
+      total: waveInv.total?.value,
+      currency: waveInv.total?.currency?.code,
+      date: waveInv.invoiceDate,
+      view_url: waveInv.viewUrl,
+    });
+
+    await logSync(orgId, 'invoice', 'pull', null, waveInv.id, 'success', null, null, {
+      number: waveInv.invoiceNumber,
+      customer: waveInv.customer?.name,
+      total: waveInv.total?.value,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Pull customers from Wave
+ */
+async function pullCustomersFromWave(orgId) {
+  const config = await getConfig(orgId);
+  if (!config?.is_active) throw new Error('Wave no está configurado');
+
+  const customers = await getWaveCustomers(config.access_token, config.business_id);
+
+  const results = { total: customers.length, mapped: 0, unmapped: 0, details: [] };
+
+  for (const cust of customers) {
+    const localId = await getLocalId(orgId, 'supplier', cust.id);
+    if (localId) {
+      results.mapped++;
+    } else {
+      results.unmapped++;
+    }
+    results.details.push({
+      wave_id: cust.id,
+      name: cust.name,
+      email: cust.email,
+      mapped_to_local: localId || null,
+    });
+  }
+
+  return results;
+}
+
+/**
  * Get sync status summary
  */
 async function getSyncStatus(orgId) {
   const config = await getConfig(orgId);
   if (!config) return { configured: false };
 
+  // Use correct DB status values
   const totalInvoices = await db('invoices')
     .where({ organization_id: orgId })
-    .whereIn('status', ['approved', 'paid', 'partial'])
+    .whereIn('status', ['registrada', 'pagada', 'pago_parcial'])
     .count('id as count')
     .first();
 
@@ -396,6 +687,11 @@ async function getSyncStatus(orgId) {
     .count('id as count')
     .first();
 
+  const totalSuppliers = await db('suppliers')
+    .where({ organization_id: orgId, is_active: true })
+    .count('id as count')
+    .first();
+
   const lastSync = await db('wave_sync_logs')
     .where({ organization_id: orgId, status: 'success' })
     .orderBy('created_at', 'desc')
@@ -406,18 +702,37 @@ async function getSyncStatus(orgId) {
     .orderBy('created_at', 'desc')
     .limit(5);
 
+  const productMappings = await db('wave_product_map')
+    .where({ organization_id: orgId })
+    .count('id as count')
+    .first();
+
+  const accountMappings = await db('wave_account_map')
+    .where({ organization_id: orgId })
+    .count('id as count')
+    .first();
+
   return {
     configured: true,
     is_active: config.is_active,
+    auto_sync: config.auto_sync,
     business_name: config.business_name,
     sync_invoices: config.sync_invoices,
     sync_suppliers: config.sync_suppliers,
+    default_product: config.default_wave_product_name || null,
     invoices: {
       total: parseInt(totalInvoices.count),
       synced: parseInt(syncedInvoices.count),
       pending: parseInt(totalInvoices.count) - parseInt(syncedInvoices.count),
     },
-    suppliers_synced: parseInt(syncedSuppliers.count),
+    suppliers: {
+      total: parseInt(totalSuppliers.count),
+      synced: parseInt(syncedSuppliers.count),
+    },
+    mappings: {
+      products: parseInt(productMappings.count),
+      accounts: parseInt(accountMappings.count),
+    },
     last_sync: lastSync?.created_at || null,
     recent_errors: recentErrors,
   };
@@ -430,9 +745,21 @@ module.exports = {
   testConnection,
   getWaveCustomers,
   getWaveProducts,
+  createWaveProduct,
   getWaveAccounts,
+  createWaveTransaction,
   syncInvoiceToWave,
   syncAllInvoicesToWave,
+  autoSyncInvoice,
+  pullInvoicesFromWave,
+  pullCustomersFromWave,
   getSyncStatus,
   getSyncLogs,
+  getProductMappings,
+  saveProductMapping,
+  deleteProductMapping,
+  getAccountMappings,
+  saveAccountMapping,
+  deleteAccountMapping,
+  getAllMappings,
 };
