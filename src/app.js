@@ -50,6 +50,7 @@ app.use('/api/v1/webhooks', require('./routes/webhooks'));
 app.use('/api/v1/dashboard', require('./routes/dashboard'));
 app.use('/api/v1/treasury', require('./routes/treasury'));
 app.use('/api/v1/credit-notes', require('./routes/creditNotes'));
+app.use('/api/v1/wave', require('./routes/wave'));
 
 // Health check with DB connectivity
 app.get('/health', async (req, res) => {

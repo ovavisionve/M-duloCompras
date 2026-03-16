@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, Users, CreditCard, BookOpen,
-  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell, FileMinus
+  Landmark, Settings, BarChart3, DollarSign, Shield, LogOut, Bell, FileMinus, Waves
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Suppliers from './pages/Suppliers';
@@ -17,6 +17,7 @@ import Configuration from './pages/Configuration';
 import Reports from './pages/Reports';
 import Treasury from './pages/Treasury';
 import CreditNotes from './pages/CreditNotes';
+import WavePage from './pages/Wave';
 import Login from './pages/Login';
 
 function ProtectedRoute({ children }) {
@@ -80,6 +81,9 @@ function Sidebar() {
         <NavLink to="/reports" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <BarChart3 size={18} /> Reportes
         </NavLink>
+        <NavLink to="/wave" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <Waves size={18} /> Wave
+        </NavLink>
         <NavLink to="/config" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <Settings size={18} /> Configuración
         </NavLink>
@@ -129,6 +133,7 @@ export default function App() {
                 <Route path="/banking" element={<Banking />} />
                 <Route path="/treasury" element={<Treasury />} />
                 <Route path="/exchange-rates" element={<ExchangeRates />} />
+                <Route path="/wave" element={<WavePage />} />
                 <Route path="/config" element={<Configuration />} />
                 <Route path="/reports" element={<Reports />} />
               </Routes>
