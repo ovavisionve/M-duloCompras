@@ -1,0 +1,12 @@
+{
+  "name": "bfc-proxy",
+  "version": "1.0.0",
+  "description": "Proxy BFC para Comprar-IA — corre en EC2 de WEFLY",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

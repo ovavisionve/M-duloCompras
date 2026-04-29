@@ -44,6 +44,14 @@ function parseBFCDate(bfcDate) {
   return `${year}-${mm}-${dd}`;
 }
 
+async function bfcFetch(config, url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (config.proxy_api_key) {
+    headers['x-api-key'] = config.proxy_api_key;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 async function getConfig(orgId) {
   return db('bfc_config').where({ organization_id: orgId }).first();
 }
@@ -56,6 +64,7 @@ async function saveConfig(orgId, data) {
     cedula: data.cedula,
     is_active: data.is_active !== false,
     auto_import: data.auto_import || false,
+    proxy_api_key: data.proxy_api_key || null,
     organization_id: orgId,
   };
   if (data.password) {
@@ -64,6 +73,7 @@ async function saveConfig(orgId, data) {
 
   if (existing) {
     if (!data.password) delete record.password_encrypted;
+    if (data.proxy_api_key === undefined) delete record.proxy_api_key;
     record.updated_at = new Date();
     const [result] = await db('bfc_config').where({ id: existing.id }).update(record).returning('*');
     return result;
@@ -137,12 +147,9 @@ async function authenticate(orgId) {
   const password = decrypt(config.password_encrypted);
   const basicAuth = Buffer.from(`${config.username}:${password}`).toString('base64');
 
-  const response = await fetch(`${config.base_url}/Login/User`, {
+  const response = await bfcFetch(config, `${config.base_url}/Login/User`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Basic ${basicAuth}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Basic ${basicAuth}` },
   });
 
   if (!response.ok) {
@@ -177,7 +184,8 @@ async function testConnection(orgId) {
   const token = await authenticate(orgId);
   const config = await getConfig(orgId);
 
-  const response = await fetch(`${config.base_url}/Login/EchoTest`, {
+  const response = await bfcFetch(config, `${config.base_url}/Login/EchoTest`, {
+    method: 'GET',
     headers: { 'Authorization': `Bearer ${token}` },
   });
 
@@ -192,12 +200,9 @@ async function getBalance(orgId, accountNumber) {
   const token = await authenticate(orgId);
   const config = await getConfig(orgId);
 
-  const response = await fetch(`${config.base_url}/Saldo/ObtenerSaldo`, {
+  const response = await bfcFetch(config, `${config.base_url}/Saldo/ObtenerSaldo`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
       cedula: config.cedula,
       nroCuenta: accountNumber,
@@ -244,12 +249,9 @@ async function getMovements(orgId, accountNumber, options = {}) {
     Bandera: bandera,
   };
 
-  const response = await fetch(`${config.base_url}/Consulta/Movimiento`, {
+  const response = await bfcFetch(config, `${config.base_url}/Consulta/Movimiento`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(body),
   });
 

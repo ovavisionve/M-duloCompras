@@ -1,0 +1,18 @@
+[Unit]
+Description=BFC Proxy para Comprar-IA
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/bfc-proxy
+ExecStart=/usr/bin/node proxy.js
+Restart=always
+RestartSec=5
+
+Environment=BFC_PROXY_PORT=3100
+Environment=BFC_PROXY_API_KEY=CAMBIAR-ESTA-CLAVE
+Environment=BFC_BASE_URL=
+
+[Install]
+WantedBy=multi-user.target

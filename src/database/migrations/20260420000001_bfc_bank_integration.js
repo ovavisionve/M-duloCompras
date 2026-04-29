@@ -8,6 +8,7 @@ exports.up = async function (knex) {
     t.string('cedula').notNullable();
     t.boolean('is_active').defaultTo(true);
     t.boolean('auto_import').defaultTo(false);
+    t.string('proxy_api_key');
     t.timestamps(true, true);
     t.unique(['organization_id']);
   });

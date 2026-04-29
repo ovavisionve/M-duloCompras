@@ -555,6 +555,7 @@ function ConfigTab({ config, onReload, flash }) {
     cedula: config?.cedula || '',
     is_active: config?.is_active ?? true,
     auto_import: config?.auto_import ?? false,
+    proxy_api_key: config?.proxy_api_key || '',
   });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -622,6 +623,12 @@ function ConfigTab({ config, onReload, flash }) {
         <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Cédula / RIF *</label>
         <input className="input" value={form.cedula} onChange={(e) => setForm({ ...form, cedula: e.target.value })} placeholder="J503159952" />
         <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Cédula o RIF registrado en BFC (sin guiones)</span>
+      </div>
+
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>API Key del Proxy (EC2)</label>
+        <input className="input" value={form.proxy_api_key} onChange={(e) => setForm({ ...form, proxy_api_key: e.target.value })} placeholder="clave-del-proxy-ec2" />
+        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Clave configurada en el proxy del EC2 (BFC_PROXY_API_KEY)</span>
       </div>
 
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
