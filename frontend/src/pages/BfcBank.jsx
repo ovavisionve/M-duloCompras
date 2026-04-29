@@ -1,0 +1,667 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Landmark, Settings, RefreshCw, Download, Trash2, Plus, CheckCircle, XCircle,
+  AlertTriangle, Clock, Eye, Link, Unlink, ArrowDownCircle, Wifi, WifiOff
+} from 'lucide-react';
+
+const API = '/api/v1';
+const headers = () => ({
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+});
+
+export default function BfcBank() {
+  const [tab, setTab] = useState('dashboard');
+  const [config, setConfig] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cfgRes, accRes, bankRes, logRes] = await Promise.all([
+        fetch(`${API}/bfc/config`, { headers: headers() }),
+        fetch(`${API}/bfc/accounts`, { headers: headers() }),
+        fetch(`${API}/banking/bank-accounts`, { headers: headers() }),
+        fetch(`${API}/bfc/logs?limit=20`, { headers: headers() }),
+      ]);
+      const cfgData = await cfgRes.json();
+      const accData = await accRes.json();
+      const bankData = await bankRes.json();
+      const logData = await logRes.json();
+      setConfig(cfgData.data);
+      setAccounts(accData.data || []);
+      setBankAccounts(bankData.data || []);
+      setLogs(logData.data || []);
+    } catch {
+      setError('Error cargando datos BFC');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const flash = (msg, type = 'success') => {
+    if (type === 'success') { setSuccess(msg); setError(''); }
+    else { setError(msg); setSuccess(''); }
+    setTimeout(() => { setSuccess(''); setError(''); }, 5000);
+  };
+
+  const tabs = [
+    { id: 'dashboard', label: 'Estado', icon: Landmark },
+    { id: 'accounts', label: 'Cuentas', icon: Link },
+    { id: 'import', label: 'Importar', icon: Download },
+    { id: 'logs', label: 'Historial', icon: Clock },
+    { id: 'config', label: 'Configuración', icon: Settings },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>BFC - Banco Fondo Común</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Integración directa con API bancaria</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {config?.is_active ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#16a34a', fontSize: '0.8rem' }}>
+              <Wifi size={14} /> Conectado
+            </span>
+          ) : (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#94a3b8', fontSize: '0.8rem' }}>
+              <WifiOff size={14} /> Desconectado
+            </span>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: '1rem' }}><AlertTriangle size={16} /> {error}</div>}
+      {success && <div className="alert alert-success" style={{ marginBottom: '1rem' }}><CheckCircle size={16} /> {success}</div>}
+
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0' }}>
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1rem',
+            border: 'none', background: tab === t.id ? '#fff' : 'transparent',
+            borderBottom: tab === t.id ? '2px solid #2563eb' : '2px solid transparent',
+            color: tab === t.id ? '#2563eb' : '#64748b', cursor: 'pointer', fontWeight: tab === t.id ? 600 : 400,
+            fontSize: '0.85rem', marginBottom: '-2px',
+          }}>
+            <t.icon size={15} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <p>Cargando...</p> : (
+        <>
+          {tab === 'dashboard' && <DashboardTab config={config} accounts={accounts} logs={logs} />}
+          {tab === 'accounts' && <AccountsTab accounts={accounts} bankAccounts={bankAccounts} onReload={loadData} flash={flash} />}
+          {tab === 'import' && <ImportTab accounts={accounts} onReload={loadData} flash={flash} />}
+          {tab === 'logs' && <LogsTab logs={logs} onReload={loadData} />}
+          {tab === 'config' && <ConfigTab config={config} onReload={loadData} flash={flash} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DashboardTab({ config, accounts, logs }) {
+  const activeAccounts = accounts.filter((a) => a.is_active);
+  const linkedAccounts = accounts.filter((a) => a.bank_account_id);
+  const recentErrors = logs.filter((l) => l.status === 'error').slice(0, 5);
+  const recentImports = logs.filter((l) => l.action === 'import' && l.status === 'success').slice(0, 5);
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <StatCard title="Estado" value={config?.is_active ? 'Activo' : 'Inactivo'} color={config?.is_active ? '#16a34a' : '#94a3b8'} icon={config?.is_active ? Wifi : WifiOff} />
+        <StatCard title="Cuentas BFC" value={activeAccounts.length} color="#2563eb" icon={Landmark} />
+        <StatCard title="Vinculadas" value={linkedAccounts.length} color="#7c3aed" icon={Link} />
+        <StatCard title="Auto-importar" value={config?.auto_import ? 'Sí' : 'No'} color={config?.auto_import ? '#16a34a' : '#94a3b8'} icon={RefreshCw} />
+      </div>
+
+      {!config && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '1.5rem', textAlign: 'center' }}>
+          <Landmark size={40} style={{ color: '#2563eb', marginBottom: '0.5rem' }} />
+          <h3 style={{ marginBottom: '0.5rem' }}>Configurar BFC</h3>
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Ve a la pestaña Configuración para conectar con el API de BFC.</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.5rem' }}>Requiere acceso VPN previamente configurado.</p>
+        </div>
+      )}
+
+      {recentErrors.length > 0 && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', color: '#dc2626' }}>Errores recientes</h3>
+          <div className="table-container">
+            <table>
+              <thead><tr><th>Fecha</th><th>Acción</th><th>Cuenta</th><th>Error</th></tr></thead>
+              <tbody>
+                {recentErrors.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ fontSize: '0.8rem' }}>{new Date(l.created_at).toLocaleString()}</td>
+                    <td>{l.action}</td>
+                    <td>{l.account_number || '—'}</td>
+                    <td style={{ fontSize: '0.8rem', color: '#dc2626' }}>{l.error_message?.substring(0, 80)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {recentImports.length > 0 && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>Importaciones recientes</h3>
+          <div className="table-container">
+            <table>
+              <thead><tr><th>Fecha</th><th>Cuenta</th><th>Obtenidos</th><th>Importados</th></tr></thead>
+              <tbody>
+                {recentImports.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ fontSize: '0.8rem' }}>{new Date(l.created_at).toLocaleString()}</td>
+                    <td>{l.account_number || '—'}</td>
+                    <td>{l.records_fetched}</td>
+                    <td>{l.records_imported}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ title, value, color, icon: Icon }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: '0.5rem', padding: '1rem', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' }}>{title}</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{value}</div>
+        </div>
+        <Icon size={24} style={{ color, opacity: 0.5 }} />
+      </div>
+    </div>
+  );
+}
+
+function AccountsTab({ accounts, bankAccounts, onReload, flash }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ account_number: '', account_alias: '', bank_account_id: '' });
+
+  const handleAdd = async () => {
+    if (!form.account_number) return flash('Número de cuenta requerido', 'error');
+    try {
+      const res = await fetch(`${API}/bfc/accounts`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ ...form, bank_account_id: form.bank_account_id || null }),
+      });
+      const data = await res.json();
+      if (!data.success) return flash(data.error?.message || 'Error', 'error');
+      flash('Cuenta BFC agregada');
+      setShowForm(false);
+      setForm({ account_number: '', account_alias: '', bank_account_id: '' });
+      onReload();
+    } catch { flash('Error de conexión', 'error'); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar esta cuenta BFC?')) return;
+    try {
+      await fetch(`${API}/bfc/accounts/${id}`, { method: 'DELETE', headers: headers() });
+      flash('Cuenta eliminada');
+      onReload();
+    } catch { flash('Error eliminando', 'error'); }
+  };
+
+  const handleLink = async (acc, bankId) => {
+    try {
+      const res = await fetch(`${API}/bfc/accounts`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ account_number: acc.account_number, bank_account_id: bankId || null }),
+      });
+      const data = await res.json();
+      if (!data.success) return flash(data.error?.message || 'Error', 'error');
+      flash(bankId ? 'Cuenta vinculada' : 'Cuenta desvinculada');
+      onReload();
+    } catch { flash('Error', 'error'); }
+  };
+
+  const vesBankAccounts = bankAccounts.filter((b) => b.currency === 'VES');
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1rem' }}>Cuentas BFC registradas</h3>
+        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <Plus size={15} /> Agregar cuenta
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Nro. Cuenta BFC *</label>
+              <input className="input" value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} placeholder="01510000000000000000" />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Alias</label>
+              <input className="input" value={form.account_alias} onChange={(e) => setForm({ ...form, account_alias: e.target.value })} placeholder="Cuenta principal" />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Vincular a cuenta local</label>
+              <select className="input" value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })}>
+                <option value="">Sin vincular</option>
+                {vesBankAccounts.map((b) => (
+                  <option key={b.id} value={b.id}>{b.bank_name} - {b.account_number}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn btn-primary" onClick={handleAdd}>Guardar</button>
+            <button className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {accounts.length === 0 ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>No hay cuentas BFC registradas</p>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead><tr><th>Nro. Cuenta</th><th>Alias</th><th>Vinculada a</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>
+              {accounts.map((acc) => (
+                <tr key={acc.id}>
+                  <td style={{ fontFamily: 'monospace' }}>{acc.account_number}</td>
+                  <td>{acc.account_alias || '—'}</td>
+                  <td>
+                    {acc.bank_account_id ? (
+                      <span style={{ color: '#16a34a', fontSize: '0.8rem' }}>{acc.bank_name} - {acc.local_account_number}</span>
+                    ) : (
+                      <select className="input" style={{ fontSize: '0.8rem', padding: '0.25rem' }}
+                        value="" onChange={(e) => handleLink(acc, e.target.value)}>
+                        <option value="">Vincular...</option>
+                        {vesBankAccounts.map((b) => (
+                          <option key={b.id} value={b.id}>{b.bank_name} - {b.account_number}</option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    {acc.is_active ? (
+                      <span className="badge badge-success">Activa</span>
+                    ) : (
+                      <span className="badge badge-secondary">Inactiva</span>
+                    )}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      {acc.bank_account_id && (
+                        <button className="btn btn-sm" onClick={() => handleLink(acc, null)} title="Desvincular">
+                          <Unlink size={14} />
+                        </button>
+                      )}
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(acc.id)} title="Eliminar">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#92400e' }}>
+        <strong>Nota:</strong> Las cuentas BFC deben vincularse a una cuenta bancaria local (VES) para poder importar movimientos automáticamente al módulo de conciliación.
+      </div>
+    </div>
+  );
+}
+
+function ImportTab({ accounts, onReload, flash }) {
+  const [selectedAccount, setSelectedAccount] = useState('');
+  const [mode, setMode] = useState('today');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [balance, setBalance] = useState(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+
+  const linkedAccounts = accounts.filter((a) => a.bank_account_id && a.is_active);
+
+  const banderaMap = { today: 1, yesterday: 2, last_month: 3, this_month: 4, range: 5 };
+
+  const handleImport = async () => {
+    if (!selectedAccount) return flash('Selecciona una cuenta', 'error');
+    setImporting(true);
+    setResult(null);
+    try {
+      const body = { bandera: banderaMap[mode] };
+      if (mode === 'range') {
+        if (!fromDate || !toDate) { flash('Selecciona rango de fechas', 'error'); setImporting(false); return; }
+        body.from_date = fromDate;
+        body.to_date = toDate;
+      }
+      const res = await fetch(`${API}/bfc/import/${selectedAccount}`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error importando', 'error'); setImporting(false); return; }
+      setResult(data.data);
+      flash(`Importados ${data.data.imported} movimientos`);
+      onReload();
+    } catch { flash('Error de conexión', 'error'); }
+    setImporting(false);
+  };
+
+  const handleBalance = async () => {
+    if (!selectedAccount) return flash('Selecciona una cuenta', 'error');
+    setLoadingBalance(true);
+    try {
+      const res = await fetch(`${API}/bfc/balance/${selectedAccount}`, { headers: headers() });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error', 'error'); setLoadingBalance(false); return; }
+      setBalance(data.data);
+    } catch { flash('Error de conexión', 'error'); }
+    setLoadingBalance(false);
+  };
+
+  const handleImportAll = async () => {
+    setImporting(true);
+    try {
+      const res = await fetch(`${API}/bfc/import-all`, { method: 'POST', headers: headers() });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error', 'error'); setImporting(false); return; }
+      const total = (data.data || []).reduce((s, r) => s + (r.imported || 0), 0);
+      flash(`Importación masiva: ${total} movimientos importados`);
+      onReload();
+    } catch { flash('Error de conexión', 'error'); }
+    setImporting(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Importar movimientos</h3>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Cuenta BFC</label>
+            <select className="input" value={selectedAccount} onChange={(e) => { setSelectedAccount(e.target.value); setBalance(null); setResult(null); }}>
+              <option value="">Seleccionar cuenta...</option>
+              {linkedAccounts.map((a) => (
+                <option key={a.id} value={a.account_number}>{a.account_alias || a.account_number} ({a.bank_name})</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Período</label>
+            <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este mes</option>
+              <option value="last_month">Mes pasado</option>
+              <option value="range">Rango de fechas</option>
+            </select>
+          </div>
+
+          {mode === 'range' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Desde</label>
+                <input type="date" className="input" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Hasta</label>
+                <input type="date" className="input" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <button className="btn btn-primary" onClick={handleImport} disabled={importing || !selectedAccount}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {importing ? <RefreshCw size={15} className="spin" /> : <Download size={15} />}
+              {importing ? 'Importando...' : 'Importar'}
+            </button>
+            <button className="btn" onClick={handleBalance} disabled={loadingBalance || !selectedAccount}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Eye size={15} /> Consultar saldo
+            </button>
+          </div>
+        </div>
+
+        <div>
+          {balance && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+              <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#16a34a' }}>Saldo BFC</h4>
+              <pre style={{ fontSize: '0.8rem', background: '#fff', padding: '0.75rem', borderRadius: '0.25rem', overflow: 'auto', maxHeight: '200px' }}>
+                {JSON.stringify(balance, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {result && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '1rem' }}>
+              <h4 style={{ fontSize: '0.9rem', marginBottom: '0.75rem', color: '#2563eb' }}>Resultado de importación</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2563eb' }}>{result.fetched}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Obtenidos</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{result.imported}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Importados</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#94a3b8' }}>{result.duplicates}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Duplicados</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: '1.5rem' }}>
+            <button className="btn" onClick={handleImportAll} disabled={importing}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', width: '100%', justifyContent: 'center' }}>
+              <ArrowDownCircle size={15} /> Importar todas las cuentas (hoy)
+            </button>
+            <p style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.35rem' }}>
+              Importa movimientos del día de todas las cuentas vinculadas
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {linkedAccounts.length === 0 && (
+        <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.5rem', textAlign: 'center' }}>
+          <AlertTriangle size={20} style={{ color: '#d97706', marginBottom: '0.5rem' }} />
+          <p style={{ fontSize: '0.85rem', color: '#92400e' }}>
+            No hay cuentas BFC vinculadas. Ve a la pestaña Cuentas para vincular una cuenta BFC a una cuenta bancaria local.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LogsTab({ logs, onReload }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1rem' }}>Historial de sincronización</h3>
+        <button className="btn" onClick={onReload} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <RefreshCw size={14} /> Actualizar
+        </button>
+      </div>
+
+      {logs.length === 0 ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>No hay registros</p>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead><tr><th>Fecha</th><th>Acción</th><th>Cuenta</th><th>Estado</th><th>Obtenidos</th><th>Importados</th><th>Detalle</th></tr></thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td style={{ fontSize: '0.8rem' }}>{new Date(l.created_at).toLocaleString()}</td>
+                  <td>
+                    <span className={`badge ${l.action === 'import' ? 'badge-info' : l.action === 'login' ? 'badge-secondary' : 'badge-primary'}`}>
+                      {l.action}
+                    </span>
+                  </td>
+                  <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{l.account_number || '—'}</td>
+                  <td>
+                    {l.status === 'success' ? (
+                      <span style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: '0.2rem' }}><CheckCircle size={14} /> OK</span>
+                    ) : (
+                      <span style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.2rem' }}><XCircle size={14} /> Error</span>
+                    )}
+                  </td>
+                  <td>{l.records_fetched}</td>
+                  <td>{l.records_imported}</td>
+                  <td style={{ fontSize: '0.75rem', color: l.status === 'error' ? '#dc2626' : '#64748b', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {l.error_message || (l.metadata ? JSON.stringify(l.metadata) : '—')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfigTab({ config, onReload, flash }) {
+  const [form, setForm] = useState({
+    base_url: config?.base_url || '',
+    username: config?.username || '',
+    password: '',
+    cedula: config?.cedula || '',
+    is_active: config?.is_active ?? true,
+    auto_import: config?.auto_import ?? false,
+  });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const handleSave = async () => {
+    if (!form.base_url || !form.username || !form.cedula) return flash('Completa los campos requeridos', 'error');
+    if (!config && !form.password) return flash('La contraseña es requerida', 'error');
+    setSaving(true);
+    try {
+      const body = { ...form };
+      if (!body.password) delete body.password;
+      const res = await fetch(`${API}/bfc/config`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error', 'error'); setSaving(false); return; }
+      flash('Configuración guardada');
+      onReload();
+    } catch { flash('Error de conexión', 'error'); }
+    setSaving(false);
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const res = await fetch(`${API}/bfc/test-connection`, { method: 'POST', headers: headers() });
+      const data = await res.json();
+      if (data.success) flash('Conexión exitosa con BFC');
+      else flash(data.error?.message || 'Error de conexión', 'error');
+    } catch { flash('Error de conexión', 'error'); }
+    setTesting(false);
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('¿Eliminar toda la configuración BFC? Esto eliminará cuentas, tokens y logs.')) return;
+    try {
+      await fetch(`${API}/bfc/config`, { method: 'DELETE', headers: headers() });
+      flash('Configuración eliminada');
+      onReload();
+    } catch { flash('Error eliminando', 'error'); }
+  };
+
+  return (
+    <div style={{ maxWidth: '600px' }}>
+      <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Configuración de conexión BFC</h3>
+
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>URL Base del API *</label>
+        <input className="input" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.bfc.com.ve/v1" />
+        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>URL proporcionada por BFC (requiere VPN)</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div>
+          <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Usuario *</label>
+          <input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Contraseña {config ? '(dejar vacío para mantener)' : '*'}</label>
+          <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={config ? '••••••' : ''} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Cédula / RIF *</label>
+        <input className="input" value={form.cedula} onChange={(e) => setForm({ ...form, cedula: e.target.value })} placeholder="J503159952" />
+        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Cédula o RIF registrado en BFC (sin guiones)</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
+          Conexión activa
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.auto_import} onChange={(e) => setForm({ ...form, auto_import: e.target.checked })} />
+          Auto-importar diariamente
+        </label>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Guardando...' : 'Guardar configuración'}
+        </button>
+        {config && (
+          <>
+            <button className="btn" onClick={handleTest} disabled={testing} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {testing ? <RefreshCw size={14} className="spin" /> : <Wifi size={14} />}
+              Probar conexión
+            </button>
+            <button className="btn btn-danger" onClick={handleDelete} style={{ marginLeft: 'auto' }}>
+              Desconectar
+            </button>
+          </>
+        )}
+      </div>
+
+      <div style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.8rem' }}>
+        <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Requisitos de conexión</h4>
+        <ul style={{ paddingLeft: '1.25rem', color: '#64748b', lineHeight: '1.6' }}>
+          <li>Túnel VPN IPSec site-to-site configurado con BFC</li>
+          <li>Credenciales proporcionadas por el banco (usuario y contraseña)</li>
+          <li>Cédula/RIF del titular de la cuenta registrado en BFC</li>
+          <li>El servidor debe tener acceso a la red VPN del banco</li>
+          <li>Los tokens JWT son válidos por 2 horas (se renuevan automáticamente)</li>
+        </ul>
+      </div>
+    </div>
+  );
+}

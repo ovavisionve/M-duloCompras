@@ -18,6 +18,7 @@ import Reports from './pages/Reports';
 import Treasury from './pages/Treasury';
 import CreditNotes from './pages/CreditNotes';
 import WavePage from './pages/Wave';
+import BfcBank from './pages/BfcBank';
 import Login from './pages/Login';
 
 function ProtectedRoute({ children }) {
@@ -76,6 +77,9 @@ function Sidebar() {
         <NavLink to="/banking" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <Landmark size={18} /> Conciliación
         </NavLink>
+        <NavLink to="/bfc" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <CreditCard size={18} /> BFC
+        </NavLink>
 
         <div className="sidebar-section">Sistema</div>
         <NavLink to="/reports" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
@@ -131,6 +135,7 @@ export default function App() {
                 <Route path="/payments" element={<Payments />} />
                 <Route path="/purchase-book" element={<PurchaseBook />} />
                 <Route path="/banking" element={<Banking />} />
+                <Route path="/bfc" element={<BfcBank />} />
                 <Route path="/treasury" element={<Treasury />} />
                 <Route path="/exchange-rates" element={<ExchangeRates />} />
                 <Route path="/wave" element={<WavePage />} />

@@ -51,6 +51,7 @@ app.use('/api/v1/dashboard', require('./routes/dashboard'));
 app.use('/api/v1/treasury', require('./routes/treasury'));
 app.use('/api/v1/credit-notes', require('./routes/creditNotes'));
 app.use('/api/v1/wave', require('./routes/wave'));
+app.use('/api/v1/bfc', require('./routes/bfcBank'));
 
 // Health check with DB connectivity
 app.get('/health', async (req, res) => {
