@@ -59,26 +59,21 @@ async function getConfig(orgId) {
 async function saveConfig(orgId, data) {
   const existing = await getConfig(orgId);
   const record = {
-    base_url: data.base_url.replace(/\/+$/, ''),
-    username: data.username,
-    cedula: data.cedula,
     is_active: data.is_active !== false,
     auto_import: data.auto_import || false,
-    proxy_api_key: data.proxy_api_key || null,
     organization_id: orgId,
   };
-  if (data.password) {
-    record.password_encrypted = encrypt(data.password);
-  }
+  if (data.base_url) record.base_url = data.base_url.replace(/\/+$/, '');
+  if (data.username) record.username = data.username;
+  if (data.cedula) record.cedula = data.cedula;
+  if (data.proxy_api_key !== undefined) record.proxy_api_key = data.proxy_api_key || null;
+  if (data.password) record.password_encrypted = encrypt(data.password);
 
   if (existing) {
-    if (!data.password) delete record.password_encrypted;
-    if (data.proxy_api_key === undefined) delete record.proxy_api_key;
     record.updated_at = new Date();
     const [result] = await db('bfc_config').where({ id: existing.id }).update(record).returning('*');
     return result;
   }
-  if (!data.password) throw new AppError('La contraseña es requerida', 400, 'MISSING_PASSWORD');
   const [result] = await db('bfc_config').insert(record).returning('*');
   return result;
 }

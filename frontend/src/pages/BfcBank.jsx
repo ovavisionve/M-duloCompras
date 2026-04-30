@@ -561,8 +561,7 @@ function ConfigTab({ config, onReload, flash }) {
   const [testing, setTesting] = useState(false);
 
   const handleSave = async () => {
-    if (!form.base_url || !form.username || !form.cedula) return flash('Completa los campos requeridos', 'error');
-    if (!config && !form.password) return flash('La contraseña es requerida', 'error');
+    if (!form.proxy_api_key && !form.base_url) return flash('Ingresa al menos la API Key del proxy o la URL base', 'error');
     setSaving(true);
     try {
       const body = { ...form };

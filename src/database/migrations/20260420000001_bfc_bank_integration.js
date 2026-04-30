@@ -2,10 +2,10 @@ exports.up = async function (knex) {
   await knex.schema.createTable('bfc_config', (t) => {
     t.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
-    t.string('base_url').notNullable();
-    t.string('username').notNullable();
-    t.text('password_encrypted').notNullable();
-    t.string('cedula').notNullable();
+    t.string('base_url');
+    t.string('username');
+    t.text('password_encrypted');
+    t.string('cedula');
     t.boolean('is_active').defaultTo(true);
     t.boolean('auto_import').defaultTo(false);
     t.string('proxy_api_key');

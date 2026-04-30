@@ -22,9 +22,6 @@ router.get('/config', authenticate, authorize('admin', 'tesorero'), async (req, 
 router.post('/config', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const { base_url, username, password, cedula, is_active, auto_import, proxy_api_key } = req.body;
-    if (!base_url || !username || !cedula) {
-      return res.status(400).json({ success: false, error: { message: 'URL, usuario y cédula son requeridos' } });
-    }
     const config = await bfcService.saveConfig(req.user.organizationId, {
       base_url, username, password, cedula, is_active, auto_import, proxy_api_key,
     });
