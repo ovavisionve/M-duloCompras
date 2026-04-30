@@ -9,16 +9,16 @@ const BFC_BASE_URL = process.env.BFC_BASE_URL || '';
 
 app.use(express.json({ limit: '5mb' }));
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', bfc_url: BFC_BASE_URL ? 'configured' : 'not configured', timestamp: new Date().toISOString() });
+});
+
 app.use((req, res, next) => {
   const key = req.headers['x-api-key'];
   if (key !== API_KEY) {
     return res.status(401).json({ error: 'API key inválida' });
   }
   next();
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', bfc_url: BFC_BASE_URL ? 'configured' : 'not configured', timestamp: new Date().toISOString() });
 });
 
 app.all('/bfc/*', async (req, res) => {
