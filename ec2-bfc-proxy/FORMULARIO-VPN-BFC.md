@@ -10,7 +10,7 @@ del banco para que el túnel IPSec se establezca correctamente.
 
 | Campo | Valor a colocar (columna WEFLY 2022, C.A) |
 |---|---|
-| IP Address | `<Elastic IP del EC2>` — sacar con `curl http://checkip.amazonaws.com` desde el EC2 |
+| IP Address | `3.219.103.87` |
 | VPN Device Description | `strongSwan 5.x sobre Amazon EC2 (Ubuntu 22.04 LTS)` |
 
 **Lado BFC (ya viene lleno, no tocar):**
@@ -54,8 +54,8 @@ Solo necesitamos 1-2 reglas: nuestro EC2 hablando con el endpoint del API BFC.
 
 | Regla | Source IP Address | Destination IP Address | Destination L4 Protocol | Permit/Deny |
 |---|---|---|---|---|
-| Rule 1 | `<Elastic IP del EC2>` | `<IP del API BFC — la da el banco>` | TCP / 443 | Permit |
-| Rule 2 | `<Elastic IP del EC2>` | `<IP del API BFC — la da el banco>` | TCP / 80 | Permit |
+| Rule 1 | `3.219.103.87` | `<IP del API BFC — la da el banco>` | TCP / 443 | Permit |
+| Rule 2 | `3.219.103.87` | `<IP del API BFC — la da el banco>` | TCP / 80 | Permit |
 | Rule 3 | (vacío) | (vacío) | (vacío) | (vacío) |
 | Rule 4 | (vacío) | (vacío) | (vacío) | (vacío) |
 | Rule 5 | (vacío) | (vacío) | (vacío) | (vacío) |
@@ -110,13 +110,13 @@ conn bfc-tunnel
     auto=start
     keyexchange=ikev2
     left=%defaultroute
-    leftid=<Elastic IP del EC2>
-    leftsubnet=<IP privada EC2>/32
+    leftid=3.219.103.87
+    leftsubnet=172.31.59.48/32
     right=190.202.127.113
-    rightsubnet=<Subred BFC>
+    rightsubnet=<Subred BFC — pendiente que BFC la entregue>
     authby=secret
     ike=3des-sha256-modp2048
-    esp=3des-sha256-modp2048
+    esp=3des-sha256
     ikelifetime=8h
     lifetime=1h
     dpdaction=restart
@@ -126,7 +126,7 @@ conn bfc-tunnel
 
 **`/etc/strongswan/ipsec.secrets`**:
 ```
-<Elastic IP del EC2> 190.202.127.113 : PSK "<PSK acordado>"
+3.219.103.87 190.202.127.113 : PSK "<PSK acordado — compartir por canal seguro, no commitear>"
 ```
 
 **`/etc/systemd/system/bfc-proxy.service`** — actualizar `BFC_BASE_URL`:
