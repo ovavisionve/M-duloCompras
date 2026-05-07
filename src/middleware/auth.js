@@ -104,4 +104,17 @@ function requireScope(scope) {
   };
 }
 
-module.exports = { authenticate, authenticateApiKey, authorize, requireScope, getJwtSecret };
+/**
+ * Restrict access to portal-level super admins (cross-organization).
+ */
+function requireSuperAdmin(req, res, next) {
+  if (!req.user) {
+    return next(new AppError('No autenticado', 401, 'AUTH_REQUIRED'));
+  }
+  if (req.user.role !== 'super_admin') {
+    return next(new AppError('Acceso restringido al portal master', 403, 'SUPER_ADMIN_REQUIRED'));
+  }
+  next();
+}
+
+module.exports = { authenticate, authenticateApiKey, authorize, requireScope, requireSuperAdmin, getJwtSecret };
