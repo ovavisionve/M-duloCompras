@@ -350,3 +350,11 @@ tr:hover { background: var(--gray-50); }
   .charts-grid { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* Print: hide app shell, isolate the BFC document for printing */
+@media print {
+  body { background: #fff !important; }
+  .sidebar, .no-print, button, header { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  #bfc-document { border: none !important; box-shadow: none !important; padding: 0 !important; max-width: 100% !important; }
+}

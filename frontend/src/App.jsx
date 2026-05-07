@@ -24,7 +24,10 @@ import Portal from './pages/Portal';
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (!token) return <Navigate to="/login" />;
+  if (user.role === 'super_admin') return <Navigate to="/portal" />;
+  return children;
 }
 
 function SuperAdminRoute({ children }) {

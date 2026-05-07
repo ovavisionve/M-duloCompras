@@ -9,6 +9,20 @@
 - Bancos: BFC (VES), Chase (USD), PNC (USD)
 - Login: admin@wefly.com.ve / admin123
 
+## Multi-Tenancy
+El sistema soporta múltiples organizaciones (clientes) en una sola DB, aisladas por `organization_id`. Todas las tablas operativas tienen este campo y todos los endpoints filtran automáticamente por `req.user.organizationId`.
+
+### Portal Master (super admin)
+- URL: `/portal` — layout independiente del módulo de compras
+- Rol especial: `super_admin` (sin `organization_id`)
+- Login master: `master@compraria.com` / `Master2026!`
+- Funciones: crear/editar organizaciones, gestionar usuarios por org, ver stats globales
+- API: `/api/v1/portal/*` (protegida por middleware `requireSuperAdmin`)
+- El wizard de creación de org provisiona atómicamente: org + admin user + config base + 9 categorías + 4 cost centers
+
+### BFC por organización
+La integración BFC (`bfc_config`, `bfc_accounts`, `bfc_tokens`, `bfc_sync_logs`) está scoped por `organization_id` — cada cliente configura sus propias credenciales. La página `/bfc` ofrece un wizard de 3 pasos (credenciales → test → finalizar) cuando no hay config, y un documento imprimible de resumen.
+
 ## Stack
 - **Backend**: Node.js 18 + Express, PostgreSQL (Knex ORM)
 - **Frontend**: React 18 + Vite, React Router, Recharts, Lucide icons
