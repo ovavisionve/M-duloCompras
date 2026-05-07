@@ -9,4 +9,15 @@ export default defineConfig({
       '/api': { target: 'http://localhost:7000', changeOrigin: true },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'charts': ['recharts'],
+          'icons': ['lucide-react'],
+        },
+      },
+    },
+  },
 });

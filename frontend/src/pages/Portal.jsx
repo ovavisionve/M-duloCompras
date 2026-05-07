@@ -4,14 +4,26 @@ import {
   Building2, Users, FileText, BarChart3, Plus, LogOut, RefreshCw,
   CheckCircle, XCircle, AlertTriangle, ChevronRight, ChevronLeft,
   Eye, EyeOff, Pencil, ToggleLeft, ToggleRight, User, Shield,
-  X, Check, Key
+  X, Check, Key, LogIn, Lock, Unlock, Copy, ExternalLink,
 } from 'lucide-react';
 
 const API = '/api/v1/portal';
-const h = () => ({
+const authHeaders = () => ({
   'Content-Type': 'application/json',
   Authorization: `Bearer ${localStorage.getItem('token')}`,
 });
+
+// Wraps fetch; auto-redirects on 401 (expired token)
+async function portalFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    return res;
+  }
+  return res;
+}
 
 const ROLES = ['admin', 'contador', 'tesorero', 'operador', 'auditor'];
 
@@ -29,6 +41,9 @@ export default function Portal() {
   const [showWizard, setShowWizard] = useState(false);
   const [editOrg, setEditOrg] = useState(null);
   const [usersOrg, setUsersOrg] = useState(null);
+  const [impersonateOrg, setImpersonateOrg] = useState(null);
+  const [showTotp, setShowTotp] = useState(false);
+  const [totpEnabled, setTotpEnabled] = useState(null);
 
   const flash = (msg, type = 'success') => {
     if (type === 'success') { setSuccess(msg); setError(''); }
@@ -39,14 +54,17 @@ export default function Portal() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, orgsRes] = await Promise.all([
-        fetch(`${API}/stats`, { headers: h() }),
-        fetch(`${API}/organizations`, { headers: h() }),
+      const [statsRes, orgsRes, totpRes] = await Promise.all([
+        portalFetch(`${API}/stats`, { headers: authHeaders() }),
+        portalFetch(`${API}/organizations`, { headers: authHeaders() }),
+        portalFetch(`${API}/auth/totp/status`, { headers: authHeaders() }),
       ]);
       const sd = await statsRes.json();
       const od = await orgsRes.json();
+      const td = await totpRes.json();
       if (sd.success) setStats(sd.data);
       if (od.success) setOrgs(od.data);
+      if (td.success) setTotpEnabled(td.data.totp_enabled);
     } catch {
       setError('Error cargando datos del portal');
     }
@@ -63,14 +81,25 @@ export default function Portal() {
 
   const toggleActive = async (org) => {
     try {
-      const res = await fetch(`${API}/organizations/${org.id}`, {
-        method: 'PATCH', headers: h(),
+      const res = await portalFetch(`${API}/organizations/${org.id}`, {
+        method: 'PATCH', headers: authHeaders(),
         body: JSON.stringify({ is_active: !org.is_active }),
       });
       const data = await res.json();
       if (!data.success) return flash(data.error?.message || 'Error', 'error');
       flash(org.is_active ? 'Organización desactivada' : 'Organización activada');
       load();
+    } catch { flash('Error de conexión', 'error'); }
+  };
+
+  const handleImpersonate = async (org) => {
+    try {
+      const res = await portalFetch(`${API}/organizations/${org.id}/impersonate`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!data.success) return flash(data.error?.message || 'Error al impersonar', 'error');
+      setImpersonateOrg({ ...org, impersonData: data.data });
     } catch { flash('Error de conexión', 'error'); }
   };
 
@@ -86,6 +115,12 @@ export default function Portal() {
     load();
   };
 
+  const onTotpChange = (enabled) => {
+    setTotpEnabled(enabled);
+    setShowTotp(false);
+    flash(enabled ? '2FA activado correctamente' : '2FA desactivado');
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
@@ -97,6 +132,14 @@ export default function Portal() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.85rem' }}>
           <span style={{ color: '#94a3b8' }}>{masterUser.email}</span>
+          <button
+            onClick={() => setShowTotp(true)}
+            title={totpEnabled ? '2FA activo' : 'Configurar 2FA'}
+            style={{ background: 'none', border: 'none', color: totpEnabled ? '#34d399' : '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            {totpEnabled ? <Lock size={15} /> : <Unlock size={15} />}
+            <span style={{ fontSize: '0.78rem' }}>2FA{totpEnabled ? ' ✓' : ''}</span>
+          </button>
           <button onClick={logout} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <LogOut size={16} /> Salir
           </button>
@@ -191,6 +234,9 @@ export default function Portal() {
                     </td>
                     <td style={{ padding: '0.875rem 1rem' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button title="Acceder como admin" onClick={() => handleImpersonate(org)} style={{ ...iconBtn, color: '#7c3aed' }}>
+                          <LogIn size={14} />
+                        </button>
                         <button title="Usuarios" onClick={() => setUsersOrg(org)} style={iconBtn}>
                           <Users size={14} />
                         </button>
@@ -220,6 +266,12 @@ export default function Portal() {
       {usersOrg && (
         <UsersModal org={usersOrg} onClose={() => setUsersOrg(null)} flash={flash} />
       )}
+      {impersonateOrg && (
+        <ImpersonateModal org={impersonateOrg} onClose={() => setImpersonateOrg(null)} />
+      )}
+      {showTotp && (
+        <TotpModal totpEnabled={totpEnabled} onDone={onTotpChange} onClose={() => setShowTotp(false)} flash={flash} />
+      )}
     </div>
   );
 }
@@ -228,6 +280,224 @@ const iconBtn = {
   background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.375rem',
   padding: '0.35rem 0.5rem', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center',
 };
+
+// ─── IMPERSONATE MODAL ─────────────────────────────────────────────
+function ImpersonateModal({ org, onClose }) {
+  const { impersonData } = org;
+  const { token, user, expires_in } = impersonData;
+
+  const openInNewTab = () => {
+    const userParam = encodeURIComponent(JSON.stringify({
+      id: user.id, email: user.email, fullName: user.fullName,
+      role: user.role, organizationId: user.organizationId, orgName: user.orgName,
+    }));
+    const url = `/impersonate?token=${encodeURIComponent(token)}&user=${userParam}`;
+    window.open(url, '_blank');
+  };
+
+  return (
+    <Overlay onClose={onClose}>
+      <div style={{ width: '440px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LogIn size={18} style={{ color: '#7c3aed' }} />
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Acceso de soporte</h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={18} /></button>
+        </div>
+
+        <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#7c3aed' }}>{org.name}</div>
+          <div style={{ color: '#64748b' }}>Accediendo como: <strong>{user.email}</strong> ({user.role})</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+            Token válido por {Math.round(expires_in / 60)} minutos · Se registra en auditoría
+          </div>
+        </div>
+
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.75rem', fontSize: '0.78rem', color: '#92400e', marginBottom: '1.25rem' }}>
+          Esta sesión de soporte queda registrada en el log de auditoría de la organización.
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+          <button onClick={openInNewTab} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <ExternalLink size={14} /> Abrir en nueva pestaña
+          </button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+// ─── TOTP 2FA MODAL ────────────────────────────────────────────────
+function TotpModal({ totpEnabled, onDone, onClose, flash }) {
+  const [phase, setPhase] = useState(totpEnabled ? 'manage' : 'setup'); // 'setup' | 'verify' | 'manage' | 'disable'
+  const [secret, setSecret] = useState('');
+  const [uri, setUri] = useState('');
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const loadSetup = async () => {
+    setLoading(true);
+    try {
+      const res = await portalFetch(`${API}/auth/totp/setup`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) { setSecret(data.data.secret); setUri(data.data.uri); setPhase('verify'); }
+    } catch { flash('Error obteniendo configuración 2FA', 'error'); }
+    setLoading(false);
+  };
+
+  const handleActivate = async () => {
+    if (!/^\d{6}$/.test(code)) return flash('Ingrese un código de 6 dígitos', 'error');
+    setLoading(true);
+    try {
+      const res = await portalFetch(`${API}/auth/totp/activate`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ secret, code }),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Código inválido', 'error'); setLoading(false); return; }
+      onDone(true);
+    } catch { flash('Error', 'error'); }
+    setLoading(false);
+  };
+
+  const handleDisable = async () => {
+    if (!/^\d{6}$/.test(code)) return flash('Ingrese un código de 6 dígitos', 'error');
+    setLoading(true);
+    try {
+      const res = await portalFetch(`${API}/auth/totp`, {
+        method: 'DELETE', headers: authHeaders(),
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Código inválido', 'error'); setLoading(false); return; }
+      onDone(false);
+    } catch { flash('Error', 'error'); }
+    setLoading(false);
+  };
+
+  const copySecret = () => {
+    navigator.clipboard.writeText(secret).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  const formatSecret = (s) => s.match(/.{1,4}/g)?.join(' ') || s;
+
+  return (
+    <Overlay onClose={onClose}>
+      <div style={{ width: '460px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Shield size={18} style={{ color: '#2563eb' }} />
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Autenticación de dos factores</h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={18} /></button>
+        </div>
+
+        {/* MANAGE phase: 2FA already enabled */}
+        {phase === 'manage' && (
+          <div>
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <CheckCircle size={20} style={{ color: '#16a34a', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 600, color: '#16a34a', fontSize: '0.9rem' }}>2FA está activo</div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>Su cuenta está protegida con autenticación de dos factores.</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Cerrar</button>
+              <button onClick={() => { setCode(''); setPhase('disable'); }} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                Deshabilitar 2FA
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SETUP phase: intro screen */}
+        {phase === 'setup' && (
+          <div>
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: '#1d4ed8' }}>
+              <strong>Proteja su cuenta master</strong> con una app de autenticación como Google Authenticator o Authy. Cada inicio de sesión requerirá un código de 6 dígitos.
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+              <button onClick={loadSetup} disabled={loading} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                {loading ? 'Generando...' : 'Configurar 2FA'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* VERIFY phase: show secret and ask for code */}
+        {phase === 'verify' && (
+          <div>
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+                1. Abra su app autenticadora y agregue una cuenta nueva manualmente con:
+              </div>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', padding: '0.75rem 1rem' }}>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '0.35rem' }}>Clave secreta</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <code style={{ fontSize: '1rem', fontFamily: 'monospace', letterSpacing: '0.15em', fontWeight: 700, color: '#1e293b', flex: 1 }}>
+                    {formatSecret(secret)}
+                  </code>
+                  <button onClick={copySecret} style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? '#16a34a' : '#94a3b8', padding: '0.25rem' }}>
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.35rem' }}>Tipo: basado en tiempo (TOTP) · 6 dígitos · 30 segundos</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+                2. Ingrese el código generado por la app para confirmar:
+              </div>
+              <input
+                type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '1.2rem', fontFamily: 'monospace', letterSpacing: '0.3em', textAlign: 'center', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setPhase('setup')} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Atrás</button>
+              <button onClick={handleActivate} disabled={loading || code.length !== 6} style={{ background: loading ? '#93c5fd' : '#2563eb', color: '#fff', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                {loading ? 'Verificando...' : 'Activar 2FA'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* DISABLE phase */}
+        {phase === 'disable' && (
+          <div>
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.875rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: '#dc2626' }}>
+              Para deshabilitar 2FA, confirme con el código actual de su app autenticadora.
+            </div>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.35rem' }}>Código de verificación</label>
+              <input
+                type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '1.2rem', fontFamily: 'monospace', letterSpacing: '0.3em', textAlign: 'center', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setPhase('manage')} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+              <button onClick={handleDisable} disabled={loading || code.length !== 6} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                {loading ? 'Deshabilitando...' : 'Confirmar deshabilitar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Overlay>
+  );
+}
 
 // ─── WIZARD ────────────────────────────────────────────────────────
 function OrgWizard({ onDone, onClose, flash }) {
@@ -270,8 +540,8 @@ function OrgWizard({ onDone, onClose, flash }) {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API}/organizations`, {
-        method: 'POST', headers: h(),
+      const res = await portalFetch(`${API}/organizations`, {
+        method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
           name: org.name,
           rif: org.rif || undefined,
@@ -356,7 +626,7 @@ function OrgWizard({ onDone, onClose, flash }) {
               </div>
             </Field>
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.75rem', fontSize: '0.78rem', color: '#92400e' }}>
-              El administrador podrá gestionar usuarios, facturas y configuración de la organización. La contraseña debe cambiarse en el primer acceso.
+              El administrador podrá gestionar usuarios, facturas y configuración de la organización.
             </div>
           </div>
         )}
@@ -411,8 +681,8 @@ function EditOrgModal({ org, onDone, onClose, flash }) {
     if (!form.name.trim()) return flash('Nombre requerido', 'error');
     setSaving(true);
     try {
-      const res = await fetch(`${API}/organizations/${org.id}`, {
-        method: 'PATCH', headers: h(),
+      const res = await portalFetch(`${API}/organizations/${org.id}`, {
+        method: 'PATCH', headers: authHeaders(),
         body: JSON.stringify({ name: form.name, rif: form.rif || null }),
       });
       const data = await res.json();
@@ -455,7 +725,7 @@ function UsersModal({ org, onClose, flash }) {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/organizations/${org.id}/users`, { headers: h() });
+      const res = await portalFetch(`${API}/organizations/${org.id}/users`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success) setUsers(data.data);
     } catch { flash('Error cargando usuarios', 'error'); }
@@ -466,8 +736,8 @@ function UsersModal({ org, onClose, flash }) {
 
   const toggleUserActive = async (user) => {
     try {
-      const res = await fetch(`${API}/organizations/${org.id}/users/${user.id}`, {
-        method: 'PATCH', headers: h(),
+      const res = await portalFetch(`${API}/organizations/${org.id}/users/${user.id}`, {
+        method: 'PATCH', headers: authHeaders(),
         body: JSON.stringify({ is_active: !user.is_active }),
       });
       const data = await res.json();
@@ -574,7 +844,7 @@ function UserForm({ orgId, user, onDone, onCancel, flash }) {
       const body = user
         ? { full_name: form.full_name, role: form.role, ...(form.password ? { password: form.password } : {}) }
         : { full_name: form.full_name, email: form.email, password: form.password, role: form.role };
-      const res = await fetch(url, { method: user ? 'PATCH' : 'POST', headers: h(), body: JSON.stringify(body) });
+      const res = await portalFetch(url, { method: user ? 'PATCH' : 'POST', headers: authHeaders(), body: JSON.stringify(body) });
       const data = await res.json();
       if (!data.success) { flash(data.error?.message || 'Error', 'error'); setSaving(false); return; }
       onDone();

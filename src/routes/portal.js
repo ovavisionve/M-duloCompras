@@ -1,11 +1,13 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { body } = require('express-validator');
 const db = require('../database/connection');
-const { authenticate, requireSuperAdmin } = require('../middleware/auth');
+const { authenticate, requireSuperAdmin, getJwtSecret } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { validate } = require('../middleware/validate');
 const auditService = require('../services/auditService');
+const { generateSecret, verifyTotp, getTotpUri } = require('../utils/totp');
 
 // All portal endpoints require an authenticated super_admin.
 router.use(authenticate, requireSuperAdmin);
@@ -268,6 +270,95 @@ router.patch('/organizations/:orgId/users/:userId', [
     await auditService.logAction(req.user.id, 'user', user.id, 'update', null, auditChanges, req.ip, user.organization_id);
 
     res.json({ success: true, data: updated });
+  } catch (err) { next(err); }
+});
+
+// ─── IMPERSONATE ORG ADMIN ───────────────────────────────────────
+router.post('/organizations/:id/impersonate', async (req, res, next) => {
+  try {
+    const org = await db('organizations').where({ id: req.params.id, is_active: true }).first();
+    if (!org) throw new AppError('Organización no encontrada o inactiva', 404, 'ORG_NOT_FOUND');
+
+    // Prefer admin role; fall back to any active user
+    const user = await db('users')
+      .where({ organization_id: org.id, is_active: true })
+      .orderByRaw(`CASE WHEN role = 'admin' THEN 0 ELSE 1 END`)
+      .first();
+    if (!user) throw new AppError('No hay usuarios activos en esta organización', 404, 'NO_ACTIVE_USERS');
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role, impersonated: true, impersonatedBy: req.user.id },
+      getJwtSecret(),
+      { expiresIn: '2h' }
+    );
+
+    await auditService.logAction(
+      req.user.id, 'user', user.id, 'impersonate',
+      null, { org_id: org.id, org_name: org.name },
+      req.ip, org.id
+    );
+
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id, email: user.email, fullName: user.full_name,
+          role: user.role, organizationId: org.id, orgName: org.name,
+        },
+        org: { id: org.id, name: org.name, slug: org.slug },
+        expires_in: 7200,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ─── TOTP STATUS ─────────────────────────────────────────────────
+router.get('/auth/totp/status', async (req, res, next) => {
+  try {
+    const user = await db('users').where({ id: req.user.id }).select('totp_enabled').first();
+    res.json({ success: true, data: { totp_enabled: Boolean(user?.totp_enabled) } });
+  } catch (err) { next(err); }
+});
+
+// ─── TOTP SETUP — generate pending secret ────────────────────────
+router.get('/auth/totp/setup', async (req, res, next) => {
+  try {
+    const secret = generateSecret();
+    const uri = getTotpUri(secret, req.user.email);
+    res.json({ success: true, data: { secret, uri } });
+  } catch (err) { next(err); }
+});
+
+// ─── TOTP ACTIVATE ────────────────────────────────────────────────
+router.post('/auth/totp/activate', [
+  body('secret').isString().isLength({ min: 16, max: 64 }).withMessage('Secret inválido'),
+  body('code').isString().isLength({ min: 6, max: 6 }).matches(/^\d{6}$/).withMessage('Código debe ser 6 dígitos'),
+], validate, async (req, res, next) => {
+  try {
+    const { secret, code } = req.body;
+    if (!verifyTotp(secret, code)) {
+      throw new AppError('Código inválido. Asegúrese que el reloj esté sincronizado.', 400, 'TOTP_INVALID');
+    }
+    await db('users').where({ id: req.user.id }).update({ totp_secret: secret, totp_enabled: true });
+    await auditService.logAction(req.user.id, 'user', req.user.id, 'totp_enable', null, null, req.ip, null);
+    res.json({ success: true, data: { totp_enabled: true } });
+  } catch (err) { next(err); }
+});
+
+// ─── TOTP DISABLE ─────────────────────────────────────────────────
+router.delete('/auth/totp', [
+  body('code').isString().isLength({ min: 6, max: 6 }).matches(/^\d{6}$/).withMessage('Código debe ser 6 dígitos'),
+], validate, async (req, res, next) => {
+  try {
+    const user = await db('users').where({ id: req.user.id }).first();
+    if (!user.totp_enabled) throw new AppError('2FA no está habilitado', 400, 'TOTP_NOT_ENABLED');
+    if (!verifyTotp(user.totp_secret, req.body.code)) {
+      throw new AppError('Código inválido', 400, 'TOTP_INVALID');
+    }
+    await db('users').where({ id: req.user.id }).update({ totp_secret: null, totp_enabled: false });
+    await auditService.logAction(req.user.id, 'user', req.user.id, 'totp_disable', null, null, req.ip, null);
+    res.json({ success: true, data: { totp_enabled: false } });
   } catch (err) { next(err); }
 });
 

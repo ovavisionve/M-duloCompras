@@ -8,6 +8,7 @@ const { authRateLimiter } = require('../middleware/rateLimiter');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const auditService = require('../services/auditService');
+const { verifyTotp } = require('../utils/totp');
 
 /**
  * @swagger
@@ -51,6 +52,19 @@ router.post('/login', authRateLimiter, [
       .first();
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       throw new AppError('Credenciales inválidas', 401, 'INVALID_CREDENTIALS');
+    }
+
+    // If 2FA is enabled, return a short-lived challenge token instead of the full JWT
+    if (user.totp_enabled && user.totp_secret) {
+      const totpToken = jwt.sign(
+        { userId: user.id, type: 'totp_challenge' },
+        getJwtSecret(),
+        { expiresIn: '5m' }
+      );
+      return res.json({
+        success: true,
+        data: { requires_2fa: true, totp_token: totpToken },
+      });
     }
 
     const token = jwt.sign(
@@ -222,6 +236,66 @@ router.get('/users', authenticate, authorize('admin'), async (req, res, next) =>
       .select('id', 'email', 'full_name', 'role', 'is_active', 'last_login', 'created_at')
       .orderBy('created_at', 'desc');
     res.json({ success: true, data: users });
+  } catch (err) { next(err); }
+});
+
+// ─── TOTP 2FA VERIFICATION (second step after password login) ─────
+router.post('/totp-verify', authRateLimiter, [
+  body('totp_token').notEmpty().withMessage('Token requerido'),
+  body('code').isString().isLength({ min: 6, max: 6 }).matches(/^\d{6}$/).withMessage('Código debe ser 6 dígitos'),
+], validate, async (req, res, next) => {
+  try {
+    const { totp_token, code } = req.body;
+
+    let decoded;
+    try {
+      decoded = jwt.verify(totp_token, getJwtSecret());
+    } catch {
+      throw new AppError('Token de verificación inválido o expirado', 401, 'TOKEN_INVALID');
+    }
+    if (decoded.type !== 'totp_challenge') {
+      throw new AppError('Token inválido', 401, 'TOKEN_INVALID');
+    }
+
+    const user = await db('users')
+      .leftJoin('organizations', 'users.organization_id', 'organizations.id')
+      .where({ 'users.id': decoded.userId, 'users.is_active': true })
+      .select('users.*', 'organizations.name as org_name', 'organizations.slug as org_slug')
+      .first();
+    if (!user) throw new AppError('Usuario no encontrado o inactivo', 401, 'USER_INACTIVE');
+    if (!user.totp_enabled || !user.totp_secret) {
+      throw new AppError('2FA no configurado para este usuario', 400, 'TOTP_NOT_CONFIGURED');
+    }
+
+    if (!verifyTotp(user.totp_secret, code)) {
+      throw new AppError('Código 2FA incorrecto', 401, 'TOTP_INVALID');
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRATION || '8h' }
+    );
+    const refreshToken = jwt.sign(
+      { userId: user.id, type: 'refresh' },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_REFRESH_EXPIRATION || '7d' }
+    );
+
+    await db('users').where({ id: user.id }).update({ last_login: new Date() });
+    await auditService.logAction(user.id, 'user', user.id, 'login', null, { method: '2fa' }, req.ip);
+
+    res.json({
+      success: true,
+      data: {
+        token,
+        refreshToken,
+        user: {
+          id: user.id, email: user.email, fullName: user.full_name, role: user.role,
+          organizationId: user.organization_id, orgName: user.org_name,
+        },
+      },
+    });
   } catch (err) { next(err); }
 });
 

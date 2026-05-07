@@ -21,6 +21,7 @@ import WavePage from './pages/Wave';
 import BfcBank from './pages/BfcBank';
 import Login from './pages/Login';
 import Portal from './pages/Portal';
+import ImpersonateLanding from './pages/ImpersonateLanding';
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('token');
@@ -134,6 +135,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/impersonate" element={<ImpersonateLanding />} />
         <Route path="/portal" element={<SuperAdminRoute><Portal /></SuperAdminRoute>} />
         <Route path="/*" element={
           <ProtectedRoute>
