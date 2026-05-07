@@ -20,10 +20,19 @@ import CreditNotes from './pages/CreditNotes';
 import WavePage from './pages/Wave';
 import BfcBank from './pages/BfcBank';
 import Login from './pages/Login';
+import Portal from './pages/Portal';
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('token');
   return token ? children : <Navigate to="/login" />;
+}
+
+function SuperAdminRoute({ children }) {
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (!token) return <Navigate to="/login" />;
+  if (user.role !== 'super_admin') return <Navigate to="/" />;
+  return children;
 }
 
 function Sidebar() {
@@ -122,6 +131,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/portal" element={<SuperAdminRoute><Portal /></SuperAdminRoute>} />
         <Route path="/*" element={
           <ProtectedRoute>
             <Layout>

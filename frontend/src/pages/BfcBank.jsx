@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Landmark, Settings, RefreshCw, Download, Trash2, Plus, CheckCircle, XCircle,
-  AlertTriangle, Clock, Eye, Link, Unlink, ArrowDownCircle, Wifi, WifiOff
+  AlertTriangle, Clock, Eye, Link, Unlink, ArrowDownCircle, Wifi, WifiOff,
+  ChevronRight, ChevronLeft, Check, EyeOff, Printer, Shield, Key, RotateCcw
 } from 'lucide-react';
 
 const API = '/api/v1';
@@ -102,7 +103,7 @@ export default function BfcBank() {
           {tab === 'accounts' && <AccountsTab accounts={accounts} bankAccounts={bankAccounts} onReload={loadData} flash={flash} />}
           {tab === 'import' && <ImportTab accounts={accounts} onReload={loadData} flash={flash} />}
           {tab === 'logs' && <LogsTab logs={logs} onReload={loadData} />}
-          {tab === 'config' && <ConfigTab config={config} onReload={loadData} flash={flash} />}
+          {tab === 'config' && <ConfigTab config={config} bankAccounts={bankAccounts} onReload={loadData} flash={flash} />}
         </>
       )}
     </div>
@@ -547,35 +548,19 @@ function LogsTab({ logs, onReload }) {
   );
 }
 
-function ConfigTab({ config, onReload, flash }) {
-  const [form, setForm] = useState({
-    base_url: config?.base_url || '',
-    username: config?.username || '',
-    password: '',
-    cedula: config?.cedula || '',
-    is_active: config?.is_active ?? true,
-    auto_import: config?.auto_import ?? false,
-    proxy_api_key: config?.proxy_api_key || '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
+// ─── BFC CONFIG WIZARD ────────────────────────────────────────────
+function ConfigTab({ config, onReload, flash, bankAccounts }) {
+  const [mode, setMode] = useState(config ? 'view' : 'wizard');
 
-  const handleSave = async () => {
-    if (!form.proxy_api_key && !form.base_url) return flash('Ingresa al menos la API Key del proxy o la URL base', 'error');
-    setSaving(true);
-    try {
-      const body = { ...form };
-      if (!body.password) delete body.password;
-      const res = await fetch(`${API}/bfc/config`, {
-        method: 'POST', headers: headers(), body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!data.success) { flash(data.error?.message || 'Error', 'error'); setSaving(false); return; }
-      flash('Configuración guardada');
-      onReload();
-    } catch { flash('Error de conexión', 'error'); }
-    setSaving(false);
-  };
+  if (mode === 'wizard') {
+    return <BfcWizard config={config} bankAccounts={bankAccounts} onDone={() => { onReload(); setMode('view'); }} flash={flash} />;
+  }
+
+  return <BfcConfigView config={config} bankAccounts={bankAccounts} onReload={onReload} flash={flash} onReconfigure={() => setMode('wizard')} />;
+}
+
+function BfcConfigView({ config, onReload, flash, onReconfigure }) {
+  const [testing, setTesting] = useState(false);
 
   const handleTest = async () => {
     setTesting(true);
@@ -598,76 +583,378 @@ function ConfigTab({ config, onReload, flash }) {
   };
 
   return (
-    <div style={{ maxWidth: '600px' }}>
-      <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Configuración de conexión BFC</h3>
-
-      <div style={{ marginBottom: '0.75rem' }}>
-        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>URL Base del API *</label>
-        <input className="input" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.bfc.com.ve/v1" />
-        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>URL proporcionada por BFC (requiere VPN)</span>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-        <div>
-          <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Usuario *</label>
-          <input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-        </div>
-        <div>
-          <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Contraseña {config ? '(dejar vacío para mantener)' : '*'}</label>
-          <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={config ? '••••••' : ''} />
-        </div>
-      </div>
-
-      <div style={{ marginBottom: '0.75rem' }}>
-        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Cédula / RIF *</label>
-        <input className="input" value={form.cedula} onChange={(e) => setForm({ ...form, cedula: e.target.value })} placeholder="J503159952" />
-        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Cédula o RIF registrado en BFC (sin guiones)</span>
-      </div>
-
-      <div style={{ marginBottom: '0.75rem' }}>
-        <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>API Key del Proxy (EC2)</label>
-        <input className="input" value={form.proxy_api_key} onChange={(e) => setForm({ ...form, proxy_api_key: e.target.value })} placeholder="clave-del-proxy-ec2" />
-        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Clave configurada en el proxy del EC2 (BFC_PROXY_API_KEY)</span>
-      </div>
-
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
-          Conexión activa
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={form.auto_import} onChange={(e) => setForm({ ...form, auto_import: e.target.checked })} />
-          Auto-importar diariamente
-        </label>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Guardando...' : 'Guardar configuración'}
+    <div style={{ maxWidth: '560px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <h3 style={{ fontSize: '1rem', margin: 0 }}>Configuración BFC activa</h3>
+        <button onClick={onReconfigure} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.35rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <RotateCcw size={13} /> Reconfigurar
         </button>
-        {config && (
-          <>
-            <button className="btn" onClick={handleTest} disabled={testing} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              {testing ? <RefreshCw size={14} className="spin" /> : <Wifi size={14} />}
-              Probar conexión
-            </button>
-            <button className="btn btn-danger" onClick={handleDelete} style={{ marginLeft: 'auto' }}>
-              Desconectar
-            </button>
-          </>
-        )}
+      </div>
+
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+        <ConfigRow label="URL Base" value={config.base_url || '—'} />
+        <ConfigRow label="Usuario" value={config.username || '—'} />
+        <ConfigRow label="Cédula / RIF" value={config.cedula || '—'} />
+        <ConfigRow label="Proxy API Key" value={config.proxy_api_key ? '••••••••' : '—'} />
+        <ConfigRow label="Auto-importar" value={config.auto_import ? 'Sí' : 'No'} />
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={handleTest} disabled={testing} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          {testing ? <RefreshCw size={14} className="spin" /> : <Wifi size={14} />}
+          Probar conexión
+        </button>
+        <button className="btn btn-danger" onClick={handleDelete} style={{ marginLeft: 'auto' }}>
+          Desconectar BFC
+        </button>
       </div>
 
       <div style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.8rem' }}>
-        <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Requisitos de conexión</h4>
+        <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Información técnica</h4>
         <ul style={{ paddingLeft: '1.25rem', color: '#64748b', lineHeight: '1.6' }}>
-          <li>Túnel VPN IPSec site-to-site configurado con BFC</li>
-          <li>Credenciales proporcionadas por el banco (usuario y contraseña)</li>
-          <li>Cédula/RIF del titular de la cuenta registrado en BFC</li>
-          <li>El servidor debe tener acceso a la red VPN del banco</li>
-          <li>Los tokens JWT son válidos por 2 horas (se renuevan automáticamente)</li>
+          <li>Los tokens JWT se renuevan automáticamente cada 2 horas</li>
+          <li>El proxy EC2 maneja el túnel VPN hacia la red interna de BFC</li>
+          <li>El auto-importar ejecuta diariamente al iniciar sesión</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+function ConfigRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', gap: '1rem', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ width: '120px', color: '#94a3b8', flexShrink: 0, fontSize: '0.8rem' }}>{label}</div>
+      <div style={{ fontFamily: value?.startsWith('http') ? 'monospace' : 'inherit', fontSize: '0.85rem', wordBreak: 'break-all' }}>{value}</div>
+    </div>
+  );
+}
+
+// ─── WIZARD ────────────────────────────────────────────────────────
+function BfcWizard({ config, bankAccounts, onDone, flash }) {
+  const [step, setStep] = useState(1);
+  const [creds, setCreds] = useState({
+    base_url: config?.base_url || '',
+    username: config?.username || '',
+    password: '',
+    cedula: config?.cedula || '',
+    proxy_api_key: config?.proxy_api_key || '',
+    auto_import: config?.auto_import ?? false,
+  });
+  const [showPass, setShowPass] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testStatus, setTestStatus] = useState(null); // null | 'loading' | 'ok' | 'error'
+  const [testMsg, setTestMsg] = useState('');
+  const [showDoc, setShowDoc] = useState(false);
+
+  const steps = [
+    { n: 1, label: 'Credenciales', icon: Key },
+    { n: 2, label: 'Conexión', icon: Wifi },
+    { n: 3, label: 'Finalizar', icon: Check },
+  ];
+
+  const saveCredentials = async () => {
+    if (!creds.proxy_api_key && !creds.base_url) {
+      flash('Ingresa la URL base o la API Key del proxy', 'error');
+      return false;
+    }
+    setSaving(true);
+    try {
+      const body = { ...creds };
+      if (!body.password) delete body.password;
+      const res = await fetch(`${API}/bfc/config`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error guardando', 'error'); setSaving(false); return false; }
+      setSaving(false);
+      return true;
+    } catch { flash('Error de conexión', 'error'); setSaving(false); return false; }
+  };
+
+  const handleStep1Next = async () => {
+    const ok = await saveCredentials();
+    if (ok) { setTestStatus(null); setStep(2); }
+  };
+
+  const handleTest = async () => {
+    setTestStatus('loading');
+    setTestMsg('');
+    try {
+      const res = await fetch(`${API}/bfc/test-connection`, { method: 'POST', headers: headers() });
+      const data = await res.json();
+      if (data.success) { setTestStatus('ok'); setTestMsg('Conexión exitosa'); }
+      else { setTestStatus('error'); setTestMsg(data.error?.message || 'Falló la conexión'); }
+    } catch { setTestStatus('error'); setTestMsg('Error de red'); }
+  };
+
+  const handleFinish = () => {
+    onDone();
+    setShowDoc(true);
+  };
+
+  if (showDoc) {
+    return <BfcDocument creds={creds} onClose={onDone} />;
+  }
+
+  return (
+    <div style={{ maxWidth: '580px' }}>
+      {/* Steps */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '2rem' }}>
+        {steps.map((s, i) => {
+          const Icon = s.icon;
+          const done = step > s.n;
+          const active = step === s.n;
+          return (
+            <React.Fragment key={s.n}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: done ? '#2563eb' : active ? '#eff6ff' : '#f1f5f9',
+                  border: `2px solid ${done || active ? '#2563eb' : '#e2e8f0'}`,
+                  color: done ? '#fff' : active ? '#2563eb' : '#94a3b8',
+                }}>
+                  {done ? <Check size={15} /> : <Icon size={15} />}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: active ? '#2563eb' : '#94a3b8', marginTop: '0.3rem', fontWeight: active ? 600 : 400 }}>{s.label}</div>
+              </div>
+              {i < steps.length - 1 && (
+                <div style={{ flex: 1, height: '2px', background: step > s.n ? '#2563eb' : '#e2e8f0', marginTop: '18px' }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* ── Step 1: Credenciales ── */}
+      {step === 1 && (
+        <div>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.25rem' }}>Credenciales de acceso</h3>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.25rem' }}>
+            Datos proporcionados por BFC para el acceso a su API. Requiere túnel VPN activo.
+          </p>
+
+          <WizField label="URL Base del API" hint="Ej: https://api.bfc.com.ve/v1 — proporcionada por BFC">
+            <input className="input" value={creds.base_url} onChange={(e) => setCreds({ ...creds, base_url: e.target.value })} placeholder="https://..." />
+          </WizField>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <WizField label="Usuario">
+              <input className="input" value={creds.username} onChange={(e) => setCreds({ ...creds, username: e.target.value })} autoComplete="username" />
+            </WizField>
+            <WizField label={`Contraseña${config ? ' (vacío = mantener)' : ''}`}>
+              <div style={{ position: 'relative' }}>
+                <input type={showPass ? 'text' : 'password'} className="input" value={creds.password} onChange={(e) => setCreds({ ...creds, password: e.target.value })} style={{ paddingRight: '2.5rem' }} autoComplete="current-password" />
+                <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </WizField>
+          </div>
+
+          <WizField label="Cédula / RIF" hint="Sin guiones. Ej: J503159952">
+            <input className="input" value={creds.cedula} onChange={(e) => setCreds({ ...creds, cedula: e.target.value })} placeholder="J503159952" />
+          </WizField>
+
+          <WizField label="API Key del Proxy EC2" hint="Valor de BFC_PROXY_API_KEY en el servidor proxy">
+            <input className="input" value={creds.proxy_api_key} onChange={(e) => setCreds({ ...creds, proxy_api_key: e.target.value })} placeholder="proxy-api-key..." />
+          </WizField>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', marginBottom: '0.5rem' }}>
+            <input type="checkbox" checked={creds.auto_import} onChange={(e) => setCreds({ ...creds, auto_import: e.target.checked })} />
+            Auto-importar movimientos diariamente
+          </label>
+
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.75rem', fontSize: '0.78rem', color: '#92400e', marginBottom: '1.5rem' }}>
+            <strong>Requisito previo:</strong> El túnel VPN IPSec site-to-site con BFC debe estar configurado y activo en el servidor antes de continuar.
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleStep1Next} disabled={saving} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {saving ? <RefreshCw size={14} className="spin" /> : null}
+              {saving ? 'Guardando...' : 'Guardar y continuar'} <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: Test de conexión ── */}
+      {step === 2 && (
+        <div>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.25rem' }}>Probar conexión</h3>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.5rem' }}>
+            Verifica que las credenciales son correctas y que el servidor tiene acceso a la API del banco.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem', background: '#f8fafc', borderRadius: '0.75rem', marginBottom: '1.5rem', gap: '1rem' }}>
+            {testStatus === null && (
+              <>
+                <Wifi size={48} style={{ color: '#94a3b8' }} />
+                <p style={{ color: '#64748b', margin: 0, fontSize: '0.9rem' }}>Haz clic en "Probar" para verificar la conexión con el servidor de BFC.</p>
+              </>
+            )}
+            {testStatus === 'loading' && (
+              <>
+                <RefreshCw size={48} style={{ color: '#2563eb' }} className="spin" />
+                <p style={{ color: '#2563eb', margin: 0 }}>Conectando con BFC...</p>
+              </>
+            )}
+            {testStatus === 'ok' && (
+              <>
+                <CheckCircle size={48} style={{ color: '#16a34a' }} />
+                <p style={{ color: '#16a34a', margin: 0, fontWeight: 600 }}>{testMsg}</p>
+              </>
+            )}
+            {testStatus === 'error' && (
+              <>
+                <XCircle size={48} style={{ color: '#dc2626' }} />
+                <p style={{ color: '#dc2626', margin: 0 }}>{testMsg}</p>
+                <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: 0, textAlign: 'center' }}>
+                  Revisa el túnel VPN, las credenciales y la URL base. Puedes volver al paso anterior para corregir.
+                </p>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <button onClick={() => setStep(1)} className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ChevronLeft size={16} /> Atrás
+            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={handleTest} disabled={testStatus === 'loading'} className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Wifi size={14} /> {testStatus === 'loading' ? 'Probando...' : 'Probar conexión'}
+              </button>
+              <button onClick={() => setStep(3)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                {testStatus === 'ok' ? 'Continuar' : 'Saltar'} <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Finalizar + documento ── */}
+      {step === 3 && (
+        <div>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.25rem' }}>Configuración completada</h3>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.25rem' }}>
+            La integración BFC está lista. Ahora puedes agregar cuentas y comenzar a importar movimientos.
+          </p>
+
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+            <h4 style={{ color: '#16a34a', fontSize: '0.9rem', marginBottom: '0.5rem' }}>✓ Resumen de configuración</h4>
+            <ConfigRow label="URL Base" value={creds.base_url || '—'} />
+            <ConfigRow label="Usuario" value={creds.username || '—'} />
+            <ConfigRow label="Cédula / RIF" value={creds.cedula || '—'} />
+            <ConfigRow label="Proxy Key" value={creds.proxy_api_key ? '••••••••' : '—'} />
+            <ConfigRow label="Auto-importar" value={creds.auto_import ? 'Sí' : 'No'} />
+          </div>
+
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.5rem', fontSize: '0.82rem', color: '#1e40af' }}>
+            <strong>Próximos pasos:</strong>
+            <ol style={{ marginTop: '0.5rem', paddingLeft: '1.25rem', lineHeight: '1.7' }}>
+              <li>Ve a la pestaña <strong>Cuentas</strong> y agrega los números de cuenta BFC</li>
+              <li>Vincula cada cuenta BFC a su cuenta bancaria local correspondiente</li>
+              <li>Usa la pestaña <strong>Importar</strong> para traer los movimientos al sistema</li>
+            </ol>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <button onClick={() => setStep(2)} className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ChevronLeft size={16} /> Atrás
+            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={() => setShowDoc(true)} className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Printer size={14} /> Ver documento
+              </button>
+              <button onClick={handleFinish} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Check size={14} /> Finalizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DOCUMENTO / RESUMEN IMPRIMIBLE ───────────────────────────────
+function BfcDocument({ creds, onClose }) {
+  const today = new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' });
+  const orgName = JSON.parse(localStorage.getItem('user') || '{}').orgName || '—';
+
+  const print = () => window.print();
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }} className="no-print">
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>Documento de configuración BFC</h3>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={print} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Printer size={14} /> Imprimir
+          </button>
+          <button onClick={onClose} className="btn">Cerrar</button>
+        </div>
+      </div>
+
+      <div style={{ border: '2px solid #1e293b', borderRadius: '0.5rem', padding: '2rem', maxWidth: '540px', background: '#fff' }} id="bfc-document">
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem' }}>
+          <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1e293b' }}>COMPRAR-IA</div>
+          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Configuración de Integración BFC</div>
+          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.25rem' }}>{today}</div>
+        </div>
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Organización</div>
+          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{orgName}</div>
+        </div>
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Parámetros de conexión</div>
+          {[
+            ['URL Base', creds.base_url || '(pendiente)'],
+            ['Usuario', creds.username || '(pendiente)'],
+            ['Contraseña', '(configurada en el sistema)'],
+            ['Cédula / RIF', creds.cedula || '(pendiente)'],
+            ['Proxy EC2 API Key', creds.proxy_api_key ? '(configurada en el sistema)' : '(no aplica)'],
+          ].map(([label, val]) => (
+            <div key={label} style={{ display: 'flex', gap: '1rem', padding: '0.35rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.85rem' }}>
+              <div style={{ width: '140px', color: '#64748b', flexShrink: 0 }}>{label}</div>
+              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Opciones</div>
+          {[
+            ['Auto-importar', creds.auto_import ? 'Activado' : 'Desactivado'],
+            ['Renovación token', 'Automática cada 2 horas'],
+          ].map(([label, val]) => (
+            <div key={label} style={{ display: 'flex', gap: '1rem', padding: '0.35rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.85rem' }}>
+              <div style={{ width: '140px', color: '#64748b', flexShrink: 0 }}>{label}</div>
+              <div>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#f8fafc', borderRadius: '0.375rem', padding: '0.75rem', fontSize: '0.78rem', color: '#64748b', marginTop: '1.5rem' }}>
+          <strong>Nota de seguridad:</strong> Este documento no incluye contraseñas ni claves completas. Las credenciales se almacenan cifradas con AES-256 en la base de datos del sistema. Mantenga este documento en un lugar seguro.
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.72rem', color: '#94a3b8', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+          Generado por Comprar-IA · {today}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WizField({ label, hint, children }) {
+  return (
+    <div style={{ marginBottom: '0.75rem' }}>
+      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.3rem', color: '#374151' }}>{label}</label>
+      {children}
+      {hint && <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem' }}>{hint}</div>}
     </div>
   );
 }

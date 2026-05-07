@@ -17,7 +17,7 @@ export default function Login() {
       const { data } = await api.post('/auth/login', { email, password });
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
-      navigate('/');
+      navigate(data.data.user.role === 'super_admin' ? '/portal' : '/');
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Error de conexión');
     } finally {
