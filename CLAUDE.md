@@ -1,5 +1,7 @@
 # Comprar-IA — Módulo de Compras y Gastos
 
+> **📋 Para contexto operativo completo (estado BFC, secretos, histórico con Diego, próximos pasos), leer primero: [`docs/ESTADO-PROYECTO.md`](docs/ESTADO-PROYECTO.md)**
+
 ## Cliente
 **WEFLY2022 C.A.** — Agencia de viajes (Caracas, Venezuela)
 - RIF: J-503159952
