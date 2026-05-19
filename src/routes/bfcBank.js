@@ -12,8 +12,11 @@ router.get('/config', authenticate, authorize('admin', 'tesorero'), async (req, 
       ...config,
       password_encrypted: undefined,
       has_password: !!config.password_encrypted,
+      notification_secret: undefined,
+      has_notification_secret: !!config.notification_secret,
     };
     delete safe.password_encrypted;
+    delete safe.notification_secret;
     res.json({ success: true, data: safe });
   } catch (err) { next(err); }
 });
@@ -21,9 +24,11 @@ router.get('/config', authenticate, authorize('admin', 'tesorero'), async (req, 
 // ─── SAVE CONFIG ─────────────────────────────────────────────────
 router.post('/config', authenticate, authorize('admin'), async (req, res, next) => {
   try {
-    const { base_url, username, password, cedula, is_active, auto_import, proxy_api_key } = req.body;
+    const { base_url, username, password, cedula, is_active, auto_import, proxy_api_key,
+            notification_secret, notification_allowed_ips } = req.body;
     const config = await bfcService.saveConfig(req.user.organizationId, {
       base_url, username, password, cedula, is_active, auto_import, proxy_api_key,
+      notification_secret, notification_allowed_ips,
     });
     await auditService.logAction(req.user.id, 'bfc_config', config.id, 'update', null, { base_url, cedula, is_active }, req.ip);
     const safe = { ...config, password_encrypted: undefined, has_password: true };

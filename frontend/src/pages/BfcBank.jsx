@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Landmark, Settings, RefreshCw, Download, Trash2, Plus, CheckCircle, XCircle,
   AlertTriangle, Clock, Eye, Link, Unlink, ArrowDownCircle, Wifi, WifiOff,
-  ChevronRight, ChevronLeft, Check, EyeOff, Printer, Shield, Key, RotateCcw
+  ChevronRight, ChevronLeft, Check, EyeOff, Printer, Shield, Key, RotateCcw,
+  Bell, Inbox, Save
 } from 'lucide-react';
 
 const API = '/api/v1';
@@ -17,6 +18,7 @@ export default function BfcBank() {
   const [accounts, setAccounts] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -24,20 +26,23 @@ export default function BfcBank() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [cfgRes, accRes, bankRes, logRes] = await Promise.all([
+      const [cfgRes, accRes, bankRes, logRes, notRes] = await Promise.all([
         fetch(`${API}/bfc/config`, { headers: headers() }),
         fetch(`${API}/bfc/accounts`, { headers: headers() }),
         fetch(`${API}/banking/bank-accounts`, { headers: headers() }),
         fetch(`${API}/bfc/logs?limit=20`, { headers: headers() }),
+        fetch(`${API}/bfc/notifications?limit=50`, { headers: headers() }),
       ]);
       const cfgData = await cfgRes.json();
       const accData = await accRes.json();
       const bankData = await bankRes.json();
       const logData = await logRes.json();
+      const notData = await notRes.json();
       setConfig(cfgData.data);
       setAccounts(accData.data || []);
       setBankAccounts(bankData.data || []);
       setLogs(logData.data || []);
+      setNotifications(notData.data || []);
     } catch {
       setError('Error cargando datos BFC');
     }
@@ -57,6 +62,7 @@ export default function BfcBank() {
     { id: 'accounts', label: 'Cuentas', icon: Link },
     { id: 'import', label: 'Importar', icon: Download },
     { id: 'logs', label: 'Historial', icon: Clock },
+    { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'config', label: 'Configuración', icon: Settings },
   ];
 
@@ -103,6 +109,7 @@ export default function BfcBank() {
           {tab === 'accounts' && <AccountsTab accounts={accounts} bankAccounts={bankAccounts} onReload={loadData} flash={flash} />}
           {tab === 'import' && <ImportTab accounts={accounts} onReload={loadData} flash={flash} />}
           {tab === 'logs' && <LogsTab logs={logs} onReload={loadData} />}
+          {tab === 'notifications' && <NotificationsTab notifications={notifications} onReload={loadData} flash={flash} />}
           {tab === 'config' && <ConfigTab config={config} bankAccounts={bankAccounts} onReload={loadData} flash={flash} />}
         </>
       )}
@@ -609,14 +616,230 @@ function BfcConfigView({ config, onReload, flash, onReconfigure }) {
         </button>
       </div>
 
-      <div style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.8rem' }}>
+      <NotificationCredsSection config={config} flash={flash} onSaved={onReload} />
+
+      <div style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.8rem', marginTop: '1.25rem' }}>
         <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Información técnica</h4>
         <ul style={{ paddingLeft: '1.25rem', color: '#64748b', lineHeight: '1.6' }}>
           <li>Los tokens JWT se renuevan automáticamente cada 2 horas</li>
           <li>El proxy EC2 maneja el túnel VPN hacia la red interna de BFC</li>
           <li>El auto-importar ejecuta diariamente al iniciar sesión</li>
+          <li>Endpoint receptor de push: <code style={{ fontSize: '0.78rem' }}>POST /api/v1/bfc/notifications</code></li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+// Inline editor para configurar el HMAC secret y las IPs permitidas del banco.
+function NotificationCredsSection({ config, flash, onSaved }) {
+  const [secret, setSecret] = useState('');
+  const [ips, setIps] = useState(config?.notification_allowed_ips || '');
+  const [showSecret, setShowSecret] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const body = { notification_allowed_ips: ips };
+      if (secret) body.notification_secret = secret;
+      const res = await fetch(`${API}/bfc/config`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) { flash(data.error?.message || 'Error guardando', 'error'); setSaving(false); return; }
+      flash('Credenciales de notificaciones actualizadas');
+      setSecret('');
+      onSaved();
+    } catch { flash('Error de conexión', 'error'); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+      <h4 style={{ fontSize: '0.9rem', margin: '0 0 0.5rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        <Bell size={15} /> Credenciales para notificaciones push
+      </h4>
+      <p style={{ fontSize: '0.78rem', color: '#92400e', margin: '0 0 0.75rem' }}>
+        Se usan para verificar que las notificaciones que llegan al endpoint <code>POST /api/v1/bfc/notifications</code> vengan del banco.
+        Configurar cuando BFC entregue el secret HMAC y la(s) IP(s) origen.
+      </p>
+
+      <div style={{ marginBottom: '0.6rem' }}>
+        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+          Secret HMAC {config?.has_notification_secret && <span style={{ color: '#16a34a', fontSize: '0.72rem' }}>(✓ configurado)</span>}
+        </label>
+        <div style={{ position: 'relative' }}>
+          <input
+            type={showSecret ? 'text' : 'password'}
+            value={secret} onChange={(e) => setSecret(e.target.value)}
+            placeholder={config?.has_notification_secret ? 'Dejar vacío para mantener el actual' : 'Pegar el secret que envíe BFC'}
+            style={{ width: '100%', padding: '0.45rem 2.5rem 0.45rem 0.6rem', border: '1px solid #fcd34d', borderRadius: '0.375rem', fontSize: '0.85rem', boxSizing: 'border-box', fontFamily: 'monospace' }}
+          />
+          <button type="button" onClick={() => setShowSecret(!showSecret)} style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#92400e' }}>
+            {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+          IPs permitidas (CSV)
+        </label>
+        <input
+          value={ips} onChange={(e) => setIps(e.target.value)}
+          placeholder="192.168.1.1, 10.0.0.5"
+          style={{ width: '100%', padding: '0.45rem 0.6rem', border: '1px solid #fcd34d', borderRadius: '0.375rem', fontSize: '0.85rem', boxSizing: 'border-box', fontFamily: 'monospace' }}
+        />
+        <p style={{ fontSize: '0.72rem', color: '#92400e', margin: '0.2rem 0 0' }}>
+          Si está vacío, no se filtra por IP. Recomendado restringir a las IPs de BFC una vez se conozcan.
+        </p>
+      </div>
+
+      <button onClick={save} disabled={saving} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '0.4rem 0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+        <Save size={13} /> {saving ? 'Guardando...' : 'Guardar credenciales'}
+      </button>
+    </div>
+  );
+}
+
+// Lista de notificaciones recibidas con detalle expandible.
+function NotificationsTab({ notifications, onReload, flash }) {
+  const [filter, setFilter] = useState('');
+  const [expanded, setExpanded] = useState(null);
+
+  const filtered = filter ? notifications.filter((n) => n.status === filter) : notifications;
+
+  const retry = async (id) => {
+    try {
+      const res = await fetch(`${API}/bfc/notifications/${id}/retry`, { method: 'POST', headers: headers() });
+      const data = await res.json();
+      if (!data.success) return flash(data.error?.message || 'Error', 'error');
+      flash('Notificación reprocesada');
+      onReload();
+    } catch { flash('Error de conexión', 'error'); }
+  };
+
+  const statusBadge = (s) => {
+    const map = {
+      processed: { bg: '#dcfce7', fg: '#16a34a', label: 'Procesada' },
+      received: { bg: '#dbeafe', fg: '#2563eb', label: 'Recibida' },
+      ignored: { bg: '#f1f5f9', fg: '#64748b', label: 'Ignorada (duplicado)' },
+      orphan: { bg: '#fef3c7', fg: '#d97706', label: 'Huérfana (sin cuenta)' },
+      error: { bg: '#fee2e2', fg: '#dc2626', label: 'Error' },
+    };
+    const { bg, fg, label } = map[s] || map.received;
+    return <span style={{ background: bg, color: fg, fontSize: '0.72rem', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: 500 }}>{label}</span>;
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Inbox size={17} /> Notificaciones push recibidas
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '0.25rem 0 0' }}>
+            Endpoint: <code>POST /api/v1/bfc/notifications</code>
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ padding: '0.35rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem' }}>
+            <option value="">Todas</option>
+            <option value="processed">Procesadas</option>
+            <option value="received">Recibidas</option>
+            <option value="ignored">Ignoradas</option>
+            <option value="orphan">Huérfanas</option>
+            <option value="error">Error</option>
+          </select>
+          <button onClick={onReload} className="btn" style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem' }}>
+            <RefreshCw size={13} /> Recargar
+          </button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '0.5rem', padding: '2.5rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+          <Inbox size={28} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
+          <div style={{ fontSize: '0.9rem' }}>No hay notificaciones recibidas</div>
+          <div style={{ fontSize: '0.78rem', marginTop: '0.3rem' }}>
+            Cuando BFC envíe eventos al endpoint, aparecerán aquí
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0.5rem', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
+                {['Fecha', 'Evento', 'Cuenta', 'Referencia', 'Monto', 'Firma', 'Estado', ''].map((h) => (
+                  <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((n) => (
+                <React.Fragment key={n.id}>
+                  <tr style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => setExpanded(expanded === n.id ? null : n.id)}>
+                    <td style={{ padding: '0.55rem 0.75rem', fontSize: '0.78rem', color: '#64748b' }}>
+                      {new Date(n.received_at).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                    <td style={{ padding: '0.55rem 0.75rem' }}>{n.event_type || '—'}</td>
+                    <td style={{ padding: '0.55rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>{n.account_number || '—'}</td>
+                    <td style={{ padding: '0.55rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>{n.reference || '—'}</td>
+                    <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>
+                      {n.amount != null ? `${Number(n.amount).toLocaleString('es-VE', { minimumFractionDigits: 2 })} ${n.currency || ''}` : '—'}
+                    </td>
+                    <td style={{ padding: '0.55rem 0.75rem' }}>
+                      {n.signature_valid
+                        ? <CheckCircle size={14} style={{ color: '#16a34a' }} />
+                        : <XCircle size={14} style={{ color: '#dc2626' }} />}
+                    </td>
+                    <td style={{ padding: '0.55rem 0.75rem' }}>{statusBadge(n.status)}</td>
+                    <td style={{ padding: '0.55rem 0.75rem' }}>
+                      {(n.status === 'orphan' || n.status === 'error') && (
+                        <button onClick={(e) => { e.stopPropagation(); retry(n.id); }} title="Reintentar" style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '0.25rem', padding: '0.25rem 0.4rem', cursor: 'pointer', color: '#64748b' }}>
+                          <RotateCcw size={12} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded === n.id && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <td colSpan={8} style={{ padding: '1rem 1.5rem' }}>
+                        {n.error_message && (
+                          <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem 0.75rem', borderRadius: '0.375rem', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+                            <strong>Error:</strong> {n.error_message}
+                          </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.8rem' }}>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Payload</strong>
+                            <pre style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.6rem', fontSize: '0.72rem', maxHeight: '240px', overflow: 'auto', margin: 0 }}>
+{JSON.stringify(n.raw_payload, null, 2)}
+                            </pre>
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Metadata</strong>
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.6rem', fontSize: '0.78rem', fontFamily: 'monospace' }}>
+                              <div>IP origen: {n.source_ip || '—'}</div>
+                              <div>Firma válida: {n.signature_valid ? 'sí' : 'no'}</div>
+                              <div>Bank movement: {n.bank_movement_id || '—'}</div>
+                            </div>
+                            <strong style={{ display: 'block', margin: '0.6rem 0 0.35rem', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Headers</strong>
+                            <pre style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0.375rem', padding: '0.6rem', fontSize: '0.72rem', maxHeight: '160px', overflow: 'auto', margin: 0 }}>
+{JSON.stringify(n.headers || {}, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

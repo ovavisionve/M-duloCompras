@@ -117,6 +117,7 @@ wave_integrations, wave_mappings
 20260430000001_seed_bfc_proxy_key
 20260507000001_super_admin_role
 20260507000002_user_totp
+20260507000003_bfc_notifications
 ```
 
 ---
@@ -210,11 +211,41 @@ BFC API (URL interna pendiente del banco)
 | POST | `/import-all` | admin, tesorero | Importar todas las cuentas |
 | GET | `/logs` | (autenticado) | Ver `bfc_sync_logs` |
 
-### Endpoint inbound (push de BFC)
-**NO existe todavía** un endpoint público para recibir notificaciones desde BFC. Cuando el banco confirme que va a empujar eventos, hay que construir:
-- `POST /api/v1/bfc/notifications` con verificación de IP origen (whitelist VPN) y HMAC si aplica
-- Persistencia en `bfc_sync_logs` o tabla nueva `bfc_notifications`
-- Insert automático en `bank_movements` si el payload es un movimiento
+### Endpoint inbound (push de BFC) — ✅ scaffold listo
+
+Construido proactivamente para tenerlo a la mano cuando BFC confirme su spec. Migración `20260507000003_bfc_notifications.js` + servicio + rutas + UI.
+
+| Endpoint | Auth | Función |
+|---|---|---|
+| `POST /api/v1/bfc/notifications` | PÚBLICO (HMAC + IP whitelist) | Receptor de push del banco |
+| `GET /api/v1/bfc/notifications` | JWT (admin/tesorero/contador/auditor) | Lista de notificaciones de la org |
+| `GET /api/v1/bfc/notifications/:id` | JWT | Detalle con payload y headers |
+| `POST /api/v1/bfc/notifications/:id/retry` | JWT (admin/tesorero) | Reintentar procesar una orphan/error |
+
+**Mecanismos de auth (configurables por org):**
+- Header `X-BFC-Signature` (HMAC-SHA256 del raw body con `bfc_config.notification_secret`)
+- IP whitelist en `bfc_config.notification_allowed_ips` (CSV) o global vía env `BFC_NOTIFICATION_ALLOWED_IPS`
+
+**Resolución de tenant:** intenta primero match por `account_number` en `bfc_accounts`; si no, prueba el HMAC contra cada `notification_secret` activo.
+
+**Extracción de payload** (tolerante a múltiples convenciones de nombre):
+- `event_type` / `eventType` / `tipo`
+- `account_number` / `cuenta` / `numeroCuenta`
+- `reference` / `referencia` / `nroDocumento`
+- `amount` / `monto`
+- `currency` / `moneda` (default `VES`)
+- `date` / `fecha` (acepta ISO y `dd/mm/yyyy`)
+- `description` / `descripcion`
+- `sign` / `signo` / `naturaleza` (heurística débito/crédito)
+
+**Estados de notificación:**
+- `processed` — creó `bank_movements`
+- `ignored` — payload válido pero duplicado (dedup por `bank_account_id + reference + movement_date`)
+- `orphan` — no se asoció a una organización
+- `error` — firma inválida, IP no permitida, o error de procesamiento
+- `received` — estado intermedio
+
+**Cuándo configurar las credenciales:** apenas BFC entregue el `secret` HMAC y las IPs origen. La UI tiene un editor inline en BFC > Configuración > "Credenciales para notificaciones push".
 
 ---
 

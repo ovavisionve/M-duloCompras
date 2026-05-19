@@ -67,6 +67,8 @@ async function saveConfig(orgId, data) {
   if (data.username) record.username = data.username;
   if (data.cedula) record.cedula = data.cedula;
   if (data.proxy_api_key !== undefined) record.proxy_api_key = data.proxy_api_key || null;
+  if (data.notification_secret !== undefined) record.notification_secret = data.notification_secret || null;
+  if (data.notification_allowed_ips !== undefined) record.notification_allowed_ips = data.notification_allowed_ips || null;
   if (data.password) record.password_encrypted = encrypt(data.password);
 
   if (existing) {
