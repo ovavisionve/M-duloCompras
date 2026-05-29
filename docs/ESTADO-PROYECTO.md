@@ -268,9 +268,38 @@ Construido proactivamente para tenerlo a la mano cuando BFC confirme su spec. Mi
 
 ### Sistema
 - **Reportes** (`/reports`)
-- **Wave** (`/wave`) — integración con Wave Apps
+- **Wave** (`/wave`) — integración con Wave Apps (ver estado real abajo)
 - **Treasury** (`/treasury`) — oculto, se accede clickeando "IA" en el logo
 - **Configuración** (`/config`) — config general de la org
+
+---
+
+## 6.1 Integración Wave — estado real (IMPORTANTE)
+
+> Verificado contra la DB de producción (Neon) el 2026-05-29: la tabla `wave_config` está **VACÍA** (0 filas).
+
+**Qué significa:** el módulo Wave en Comprar-IA está **construido y listo para conectar**, pero el `access_token` **nunca se guardó en Comprar-IA**. La conexión Comprar-IA ↔ Wave quedó pendiente.
+
+**Quién tiene el token:** lo tiene **WEFLY (Diego / Chris)**, en su cuenta de Wave. NO está en nuestra base de datos ni en el repo.
+
+**Distinción clave — dos conexiones distintas que se confundían:**
+- ✅ **Banco → Wave** (Chase/PNC conectados *dentro* de la plataforma de Wave, usando el agregador bancario propio de Wave). Esto es lo que Diego reportó el 1/abr (*"las gringas ya están conectadas"*). Vive en waveapps.com, no en Comprar-IA.
+- ❌ **Comprar-IA → Wave** (vía `access_token` API GraphQL). **Nunca se completó.** Por eso `wave_config` está vacía.
+
+**Para activarlo en el futuro:**
+1. Pedir el Full Access Token a Diego/Chris, o generarlo en `developer.waveapps.com` → Manage Applications (cuenta de WEFLY)
+2. Pegarlo en Comprar-IA: `/wave` → Configuración → se guarda en `wave_config.access_token`
+3. El `business_id` lo trae automáticamente el sistema al validar el token
+
+**Credenciales que pide el módulo** (`wave_config`, scopeado por `organization_id`):
+- `access_token` — Full Access Token (Bearer), ⚠️ se guarda en **texto plano** (a diferencia de BFC que va cifrado)
+- `business_id`, `business_name`, flags `is_active`/`sync_invoices`/`sync_suppliers`/`auto_sync`
+- Endpoint: `https://gql.waveapps.com/graphql/public`
+- En el API el token sale **enmascarado** (`••••••` + últimos 6) — no hay forma de recuperarlo por el API.
+
+**DB de producción:** Postgres en **Neon** (no en Leapcell). Proyecto Neon `empty-heart-...`, rama Primary, endpoint `ep-hidden-cake-ai9ed9fi`. El `DATABASE_URL` está en Leapcell → Env Variables. Snapshot 2026-05-29: 2 organizaciones, 11 usuarios, 3 facturas, 0 filas wave_config.
+
+> ⚠️ Nota de red: la DB Neon solo es alcanzable por puerto 5432 / SQL Editor de Neon. No es accesible desde el sandbox de Claude (egress restringido). Para consultar producción, usar el **SQL Editor de console.neon.tech**.
 
 ---
 
@@ -380,7 +409,8 @@ El warning de "chunk > 500 kB" desapareció. Los chunks vendor son cacheables in
 | 10/mar | Notas de crédito listas |
 | 11/mar | Extracción tasa Binance P2P documentada (`docs/extraccion-tasa-binance.md`) |
 | 16/mar | Luis sale de Smart; transición a Sallyan. Investigación Wave inicia |
-| 1/abr | Cuentas conectadas a Wave (Chase, PNC). BFC pendiente |
+| 1/abr | Chase/PNC conectados **dentro de Wave** (plataforma waveapps.com), no vía token en Comprar-IA. BFC pendiente |
+| 29/may | Verificado en DB: `wave_config` vacía — token Wave nunca se pegó en Comprar-IA, lo tiene WEFLY (ver §6.1) |
 | 28/abr | BFC manda preguntas técnicas, Diego las reenvía a Luis |
 | 29/abr | Luis pide IP pública/router. WEFLY tiene EC2 Amazon |
 | 29/abr | Instrucciones para asignar Elastic IP, instalar strongSwan, abrir puertos |
